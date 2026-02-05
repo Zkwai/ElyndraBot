@@ -24,6 +24,8 @@ const WARNINGS_PATH = path.join(DATA_DIR, 'warnings.json');
 const MC_CONFIG_PATH = path.join(CONFIG_DIR, 'minecraft.json');
 const TIME_REGEX = /^(\d+)([smhd])$/;
 const PANEL_COLOR = '#f1c40f';
+const CREDIT_TEXT = 'aimbot.sprx';
+const CREDIT_ICON_URL = 'https://cdn.discordapp.com/avatars/396332601717293056/05cc4947c620300904d645739e53f8d7.png?size=1024';
 const defaultMinecraftConfig = {
     title: 'Informations Minecraft',
     host: 'elyndra.mcbe.fr',
@@ -170,8 +172,12 @@ function capsPercent(content) {
     return Math.round((caps / letters.length) * 100);
 }
 
+function applyCredit(embed) {
+    return embed.setFooter({ text: CREDIT_TEXT, iconURL: CREDIT_ICON_URL });
+}
+
 function buildServerInfoEmbed(guild) {
-    return new EmbedBuilder()
+    return applyCredit(new EmbedBuilder()
         .setColor(PANEL_COLOR)
         .setTitle(`Information serveur ${guild.name}`)
         .setThumbnail(guild.iconURL({ dynamic: true }))
@@ -181,10 +187,10 @@ function buildServerInfoEmbed(guild) {
             { name: '📅 Cree le', value: guild.createdAt.toLocaleDateString('fr-FR'), inline: true },
             { name: '💬 Salons texte', value: `${guild.channels.cache.filter(channel => channel.isTextBased()).size}`, inline: true },
             { name: '🔊 Salons vocaux', value: `${guild.channels.cache.filter(channel => channel.isVoiceBased()).size}`, inline: true },
-            { name: '📝 Roles', value: `${guild.roles.cache.size}`, inline: true },
-            { name: '✨ Boosts', value: `${guild.premiumSubscriptionCount ?? 0}`, inline: true }
+            { name: '🧩 Roles', value: `${guild.roles.cache.size}`, inline: true },
+            { name: '🚀 Boosts', value: `${guild.premiumSubscriptionCount ?? 0}`, inline: true }
         )
-        .setTimestamp();
+        .setTimestamp());
 }
 
 function buildMinecraftPanelEmbed(config, status) {
@@ -201,19 +207,21 @@ function buildMinecraftPanelEmbed(config, status) {
     const ping = isOnline && typeof status.pingMs === 'number'
         ? `${status.pingMs} ms`
         : 'N/A';
-    return new EmbedBuilder()
+    const description = [
+        `» Statut: ${isOnline ? 'En ligne' : 'Hors ligne'}`,
+        `» IP: ${config.host}`,
+        `» Port: ${config.port}`,
+        `» Joueurs: ${players}`,
+        `» Version: ${version}`,
+        `» Ping: ${ping}`,
+        `» MOTD: ${motd}`
+    ].join('\n');
+
+    return applyCredit(new EmbedBuilder()
         .setColor(PANEL_COLOR)
         .setTitle(config.title)
-        .addFields(
-            { name: '» Statut', value: isOnline ? 'En ligne' : 'Hors ligne', inline: false },
-            { name: '» IP', value: config.host, inline: false },
-            { name: '» Port', value: String(config.port), inline: false },
-            { name: '» Joueurs', value: players, inline: false },
-            { name: '» Version', value: version, inline: false },
-            { name: '» Ping', value: ping, inline: false },
-            { name: '» MOTD', value: motd, inline: false }
-        )
-        .setTimestamp();
+        .setDescription(description)
+        .setTimestamp());
 }
 
 async function fetchMinecraftStatus(config) {
@@ -354,7 +362,17 @@ async function registerSlashCommands() {
     ].map(command => command.toJSON());
 
     const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
+    if (process.env.GUILD_ID) {
+        await rest.put(
+            Routes.applicationGuildCommands(process.env.CLIENT_ID, process.env.GUILD_ID),
+            { body: commands }
+        );
+        console.log(`✅ Slash commands synchronisees pour le serveur ${process.env.GUILD_ID}.`);
+        return;
+    }
+
     await rest.put(Routes.applicationCommands(process.env.CLIENT_ID), { body: commands });
+    console.log('✅ Slash commands synchronisees globalement.');
 }
 
 client.once('clientReady', async () => {
@@ -365,7 +383,6 @@ client.once('clientReady', async () => {
 
     try {
         await registerSlashCommands();
-        console.log('✅ Slash commands synchronisees.');
     } catch (error) {
         console.error('Erreur synchronisation commandes:', error);
     }
@@ -391,7 +408,7 @@ client.on('interactionCreate', async (interaction) => {
     try {
         if (commandName === 'ping') {
             const embed = new EmbedBuilder()
-                .setColor('#0099ff')
+                .setColor(PANEL_COLOR)
                 .setTitle('🏓 Pong!')
                 .setDescription(`Latence: ${client.ws.ping}ms`)
                 .setTimestamp();
@@ -400,7 +417,7 @@ client.on('interactionCreate', async (interaction) => {
 
         if (commandName === 'help') {
             const embed = new EmbedBuilder()
-                .setColor('#00ff00')
+                .setColor(PANEL_COLOR)
                 .setTitle('📋 Commandes du Bot')
                 .setDescription('Principales commandes de moderation et configuration.')
                 .addFields(
@@ -420,12 +437,12 @@ client.on('interactionCreate', async (interaction) => {
         if (commandName === 'panel') {
             const sub = interaction.options.getSubcommand();
             if (sub === 'serverinfo') {
-                const embed = new EmbedBuilder()
+                const embed = applyCredit(new EmbedBuilder()
                     .setColor(PANEL_COLOR)
                     .setTitle(`Information serveur ${guild.name}`)
                     .setDescription('Clique sur le bouton pour afficher les informations du serveur.')
                     .setThumbnail(guild.iconURL({ dynamic: true }))
-                    .setTimestamp();
+                    .setTimestamp());
                 const row = new ActionRowBuilder().addComponents(
                     new ButtonBuilder()
                         .setCustomId('panel_serverinfo')
@@ -456,7 +473,7 @@ client.on('interactionCreate', async (interaction) => {
             }
             await member.kick(reason);
             const embed = new EmbedBuilder()
-                .setColor('#ff0000')
+                .setColor(PANEL_COLOR)
                 .setTitle('👢 Membre expulsé')
                 .setDescription(`${target.tag} a été expulsé`)
                 .addFields({ name: 'Raison', value: reason }, { name: 'Modérateur', value: interaction.user.tag })
@@ -478,7 +495,7 @@ client.on('interactionCreate', async (interaction) => {
             }
             await member.ban({ reason, deleteMessageDays: 1 });
             const embed = new EmbedBuilder()
-                .setColor('#ff0000')
+                .setColor(PANEL_COLOR)
                 .setTitle('🔨 Membre banni')
                 .setDescription(`${target.tag} a été banni`)
                 .addFields({ name: 'Raison', value: reason }, { name: 'Modérateur', value: interaction.user.tag })
@@ -494,7 +511,7 @@ client.on('interactionCreate', async (interaction) => {
             const reason = interaction.options.getString('raison') || 'Aucune raison fournie';
             await guild.members.unban(userId, reason);
             const embed = new EmbedBuilder()
-                .setColor('#00ff00')
+                .setColor(PANEL_COLOR)
                 .setTitle('✅ Membre débanni')
                 .setDescription(`ID: ${userId}`)
                 .addFields({ name: 'Raison', value: reason }, { name: 'Modérateur', value: interaction.user.tag })
@@ -524,7 +541,7 @@ client.on('interactionCreate', async (interaction) => {
             }
             await member.timeout(milliseconds, reason);
             const embed = new EmbedBuilder()
-                .setColor('#ff9900')
+                .setColor(PANEL_COLOR)
                 .setTitle('⏰ Timeout')
                 .setDescription(`${target.tag} a été mis en timeout`)
                 .addFields(
@@ -547,7 +564,7 @@ client.on('interactionCreate', async (interaction) => {
             const deleted = await interaction.channel.bulkDelete(amount, true);
             await interaction.reply({ content: `✅ ${deleted.size} message(s) supprimé(s).`, flags: MessageFlags.Ephemeral });
             const embed = new EmbedBuilder()
-                .setColor('#0099ff')
+                .setColor(PANEL_COLOR)
                 .setTitle('🧹 Purge')
                 .setDescription(`${deleted.size} message(s) supprimé(s)`)
                 .addFields({ name: 'Modérateur', value: interaction.user.tag })
@@ -564,7 +581,7 @@ client.on('interactionCreate', async (interaction) => {
             warnList.push({ reason, moderatorId: interaction.user.id, timestamp: Date.now() });
             saveWarnings();
             const embed = new EmbedBuilder()
-                .setColor('#ffcc00')
+                .setColor(PANEL_COLOR)
                 .setTitle('⚠️ Avertissement')
                 .setDescription(`${target.tag} a reçu un avertissement`)
                 .addFields({ name: 'Raison', value: reason }, { name: 'Modérateur', value: interaction.user.tag })
@@ -582,7 +599,7 @@ client.on('interactionCreate', async (interaction) => {
                 ? warnList.map((warn, index) => `${index + 1}. ${warn.reason} (par <@${warn.moderatorId}>)`).slice(0, 10).join('\n')
                 : 'Aucun avertissement.';
             const embed = new EmbedBuilder()
-                .setColor('#ffcc00')
+                .setColor(PANEL_COLOR)
                 .setTitle(`📒 Avertissements de ${target.tag}`)
                 .setDescription(formatted)
                 .setTimestamp();
@@ -600,7 +617,7 @@ client.on('interactionCreate', async (interaction) => {
             const removed = warnList.splice(index, 1)[0];
             saveWarnings();
             const embed = new EmbedBuilder()
-                .setColor('#00ff99')
+                .setColor(PANEL_COLOR)
                 .setTitle('✅ Avertissement retiré')
                 .setDescription(`${target.tag}`)
                 .addFields({ name: 'Raison', value: removed.reason }, { name: 'Modérateur', value: interaction.user.tag })
@@ -617,7 +634,7 @@ client.on('interactionCreate', async (interaction) => {
             warningsStore[guild.id][target.id] = [];
             saveWarnings();
             const embed = new EmbedBuilder()
-                .setColor('#00ff99')
+                .setColor(PANEL_COLOR)
                 .setTitle('✅ Avertissements effacés')
                 .setDescription(`${target.tag}`)
                 .addFields({ name: 'Modérateur', value: interaction.user.tag })
@@ -650,7 +667,7 @@ client.on('interactionCreate', async (interaction) => {
             const sub = interaction.options.getSubcommand();
             if (sub === 'view') {
                 const embed = new EmbedBuilder()
-                    .setColor('#0099ff')
+                    .setColor(PANEL_COLOR)
                     .setTitle('⚙️ Configuration de modération')
                     .addFields(
                         { name: 'Automod', value: `enabled=${config.automod.enabled}\nblockInvites=${config.automod.blockInvites}\nmaxMentions=${config.automod.maxMentions}\nmaxLinks=${config.automod.maxLinks}\nmaxCapsPercent=${config.automod.maxCapsPercent}\nminCapsLength=${config.automod.minCapsLength}`, inline: false },
@@ -713,7 +730,7 @@ client.on('messageCreate', async (message) => {
             await message.delete().catch(() => {});
             await message.channel.send('❌ Lien d\'invitation interdit.').then(msg => setTimeout(() => msg.delete().catch(() => {}), 5000));
             const embed = new EmbedBuilder()
-                .setColor('#ff0000')
+                .setColor(PANEL_COLOR)
                 .setTitle('🚫 Invitation bloquee')
                 .setDescription(`${message.author.tag} a tente de poster une invite.`)
                 .setTimestamp();
@@ -725,7 +742,7 @@ client.on('messageCreate', async (message) => {
             await message.delete().catch(() => {});
             await message.channel.send('❌ Trop de mentions.').then(msg => setTimeout(() => msg.delete().catch(() => {}), 5000));
             const embed = new EmbedBuilder()
-                .setColor('#ff0000')
+                .setColor(PANEL_COLOR)
                 .setTitle('🚫 Mention spam')
                 .setDescription(`${message.author.tag} a excede les mentions.`)
                 .setTimestamp();
@@ -737,7 +754,7 @@ client.on('messageCreate', async (message) => {
             await message.delete().catch(() => {});
             await message.channel.send('❌ Trop de liens.').then(msg => setTimeout(() => msg.delete().catch(() => {}), 5000));
             const embed = new EmbedBuilder()
-                .setColor('#ff0000')
+                .setColor(PANEL_COLOR)
                 .setTitle('🚫 Spam de liens')
                 .setDescription(`${message.author.tag} a excede les liens.`)
                 .setTimestamp();
@@ -749,7 +766,7 @@ client.on('messageCreate', async (message) => {
             await message.delete().catch(() => {});
             await message.channel.send('❌ Trop de majuscules.').then(msg => setTimeout(() => msg.delete().catch(() => {}), 5000));
             const embed = new EmbedBuilder()
-                .setColor('#ff0000')
+                .setColor(PANEL_COLOR)
                 .setTitle('🚫 Caps spam')
                 .setDescription(`${message.author.tag} a abuse des majuscules.`)
                 .setTimestamp();
@@ -776,7 +793,7 @@ client.on('messageCreate', async (message) => {
             }
             await message.channel.send('❌ Anti-spam: ralentis un peu.').then(msg => setTimeout(() => msg.delete().catch(() => {}), 5000));
             const embed = new EmbedBuilder()
-                .setColor('#ff0000')
+                .setColor(PANEL_COLOR)
                 .setTitle('🚫 Anti-spam')
                 .setDescription(`${message.author.tag} a spam.`)
                 .setTimestamp();
