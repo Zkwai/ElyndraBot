@@ -8,6 +8,8 @@ Bot Discord francais oriente moderation avec slash commands, automod et anti-spa
 - `/ping` - Latence du bot
 - `/help` - Liste des commandes
 - `/server` - Infos serveur
+- `/panel serverinfo` - Panel infos serveur
+- `/panel mcinfo` - Panel Minecraft
 
 ### Moderation
 - `/kick` - Expulser un membre
@@ -57,6 +59,7 @@ Remplir:
 ```env
 DISCORD_TOKEN=ton_token
 CLIENT_ID=ton_client_id
+GUILD_ID=ton_id_serveur (optionnel, pour sync instantanee)
 ```
 
 4) Activer les intents privilegies
@@ -78,8 +81,9 @@ npm start
 ```
 
 ## Notes
-- Les fichiers de configuration runtime sont ecrits dans `data/`.
-- Les slash commands peuvent mettre quelques minutes a apparaitre.
+- Les fichiers runtime sont ecrits dans `data/`.
+- La config Minecraft est dans `config/minecraft.json`.
+- Les slash commands globales peuvent mettre quelques minutes a apparaitre. Avec `GUILD_ID`, elles apparaissent tout de suite.
 
 ## Licence
 MIT
