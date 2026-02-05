@@ -207,20 +207,18 @@ function buildMinecraftPanelEmbed(config, status) {
     const ping = isOnline && typeof status.pingMs === 'number'
         ? `${status.pingMs} ms`
         : 'N/A';
-    const description = [
-        `» Statut: ${isOnline ? 'En ligne' : 'Hors ligne'}`,
-        `» IP: ${config.host}`,
-        `» Port: ${config.port}`,
-        `» Joueurs: ${players}`,
-        `» Version: ${version}`,
-        `» Ping: ${ping}`,
-        `» MOTD: ${motd}`
-    ].join('\n');
-
     return applyCredit(new EmbedBuilder()
         .setColor(PANEL_COLOR)
         .setTitle(config.title)
-        .setDescription(description)
+        .addFields(
+            { name: '🟢 Statut', value: isOnline ? 'En ligne' : 'Hors ligne', inline: false },
+            { name: '🌐 IP', value: config.host, inline: false },
+            { name: '🔌 Port', value: String(config.port), inline: false },
+            { name: '👥 Joueurs', value: players, inline: false },
+            { name: '🧭 Version', value: version, inline: false },
+            { name: '📡 Ping', value: ping, inline: false },
+            { name: '📝 MOTD', value: motd, inline: false }
+        )
         .setTimestamp());
 }
 
@@ -267,6 +265,7 @@ async function registerSlashCommands() {
     const commands = [
         new SlashCommandBuilder().setName('ping').setDescription('Afficher la latence du bot'),
         new SlashCommandBuilder().setName('help').setDescription('Afficher la liste des commandes'),
+        new SlashCommandBuilder().setName('ip').setDescription('Infos Minecraft (meme que panel mcinfo)'),
         new SlashCommandBuilder().setName('server').setDescription('Infos sur le serveur'),
         new SlashCommandBuilder()
             .setName('panel')
@@ -423,7 +422,7 @@ client.on('interactionCreate', async (interaction) => {
                 .addFields(
                     { name: 'Moderation', value: '/kick /ban /unban /timeout /clear /warn /warnings /unwarn /clearwarnings', inline: false },
                     { name: 'Configuration', value: '/modlog set|clear /config view|set|reset', inline: false },
-                    { name: 'Panels membres', value: '/panel serverinfo /panel mcinfo', inline: false }
+                    { name: 'Panels membres', value: '/panel serverinfo /panel mcinfo /ip', inline: false }
                 )
                 .setTimestamp();
             return interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
@@ -459,6 +458,14 @@ client.on('interactionCreate', async (interaction) => {
                 await interaction.reply({ embeds: [embed] });
                 return;
             }
+        }
+
+        if (commandName === 'ip') {
+            const config = getMinecraftConfig();
+            const status = await fetchMinecraftStatus(config);
+            const embed = buildMinecraftPanelEmbed(config, status);
+            await interaction.reply({ embeds: [embed] });
+            return;
         }
 
         if (commandName === 'kick') {
