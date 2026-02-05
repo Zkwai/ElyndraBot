@@ -1,0 +1,22 @@
+{
+  "name": "Elyndra-bot",
+  "version": "1.0.0",
+  "description": "Discord bot with moderation and reaction roles",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node index.js"
+  },
+  "keywords": [
+    "discord",
+    "bot",
+    "moderation",
+    "reaction-roles"
+  ],
+  "author": "ZK",
+  "license": "MIT",
+  "dependencies": {
+    "discord.js": "^14.14.1",
+    "dotenv": "^16.3.1"
+  }
+}
