@@ -7,6 +7,7 @@ const {
     Partials,
     PermissionFlagsBits,
     EmbedBuilder,
+    MessageFlags,
     REST,
     Routes,
     SlashCommandBuilder
@@ -152,12 +153,12 @@ async function sendModLog(guild, embed) {
 
 async function ensurePermissions(interaction, memberPerms, botPerms) {
     if (!interaction.member.permissions.has(memberPerms)) {
-        await interaction.reply({ content: '❌ Tu n\'as pas la permission requise.', ephemeral: true });
+        await interaction.reply({ content: '❌ Tu n\'as pas la permission requise.', flags: MessageFlags.Ephemeral });
         return false;
     }
     const me = interaction.guild.members.me;
     if (!me.permissions.has(botPerms)) {
-        await interaction.reply({ content: '❌ Il me manque une permission pour cette action.', ephemeral: true });
+        await interaction.reply({ content: '❌ Il me manque une permission pour cette action.', flags: MessageFlags.Ephemeral });
         return false;
     }
     return true;
@@ -284,7 +285,7 @@ client.on('interactionCreate', async (interaction) => {
                 .setTitle('🏓 Pong!')
                 .setDescription(`Latence: ${client.ws.ping}ms`)
                 .setTimestamp();
-            return interaction.reply({ embeds: [embed], ephemeral: true });
+            return interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
         }
 
         if (commandName === 'help') {
@@ -297,7 +298,7 @@ client.on('interactionCreate', async (interaction) => {
                     { name: 'Configuration', value: '/modlog set|clear /config view|set|reset', inline: false }
                 )
                 .setTimestamp();
-            return interaction.reply({ embeds: [embed], ephemeral: true });
+            return interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
         }
 
         if (commandName === 'server') {
@@ -321,10 +322,10 @@ client.on('interactionCreate', async (interaction) => {
             const target = interaction.options.getUser('membre', true);
             const reason = interaction.options.getString('raison') || 'Aucune raison fournie';
             const member = guild.members.cache.get(target.id);
-            if (!member) return interaction.reply({ content: '❌ Membre introuvable.', ephemeral: true });
-            if (member.id === interaction.user.id) return interaction.reply({ content: '❌ Action sur soi impossible.', ephemeral: true });
+            if (!member) return interaction.reply({ content: '❌ Membre introuvable.', flags: MessageFlags.Ephemeral });
+            if (member.id === interaction.user.id) return interaction.reply({ content: '❌ Action sur soi impossible.', flags: MessageFlags.Ephemeral });
             if (member.roles.highest.position >= interaction.member.roles.highest.position) {
-                return interaction.reply({ content: '❌ Rôle supérieur ou égal.', ephemeral: true });
+                return interaction.reply({ content: '❌ Rôle supérieur ou égal.', flags: MessageFlags.Ephemeral });
             }
             await member.kick(reason);
             const embed = new EmbedBuilder()
@@ -343,10 +344,10 @@ client.on('interactionCreate', async (interaction) => {
             const target = interaction.options.getUser('membre', true);
             const reason = interaction.options.getString('raison') || 'Aucune raison fournie';
             const member = guild.members.cache.get(target.id);
-            if (!member) return interaction.reply({ content: '❌ Membre introuvable.', ephemeral: true });
-            if (member.id === interaction.user.id) return interaction.reply({ content: '❌ Action sur soi impossible.', ephemeral: true });
+            if (!member) return interaction.reply({ content: '❌ Membre introuvable.', flags: MessageFlags.Ephemeral });
+            if (member.id === interaction.user.id) return interaction.reply({ content: '❌ Action sur soi impossible.', flags: MessageFlags.Ephemeral });
             if (member.roles.highest.position >= interaction.member.roles.highest.position) {
-                return interaction.reply({ content: '❌ Rôle supérieur ou égal.', ephemeral: true });
+                return interaction.reply({ content: '❌ Rôle supérieur ou égal.', flags: MessageFlags.Ephemeral });
             }
             await member.ban({ reason, deleteMessageDays: 1 });
             const embed = new EmbedBuilder()
@@ -382,17 +383,17 @@ client.on('interactionCreate', async (interaction) => {
             const duration = interaction.options.getString('duree', true);
             const reason = interaction.options.getString('raison') || 'Aucune raison fournie';
             const member = guild.members.cache.get(target.id);
-            if (!member) return interaction.reply({ content: '❌ Membre introuvable.', ephemeral: true });
-            if (member.id === interaction.user.id) return interaction.reply({ content: '❌ Action sur soi impossible.', ephemeral: true });
+            if (!member) return interaction.reply({ content: '❌ Membre introuvable.', flags: MessageFlags.Ephemeral });
+            if (member.id === interaction.user.id) return interaction.reply({ content: '❌ Action sur soi impossible.', flags: MessageFlags.Ephemeral });
             if (member.roles.highest.position >= interaction.member.roles.highest.position) {
-                return interaction.reply({ content: '❌ Rôle supérieur ou égal.', ephemeral: true });
+                return interaction.reply({ content: '❌ Rôle supérieur ou égal.', flags: MessageFlags.Ephemeral });
             }
             const milliseconds = parseDuration(duration);
             if (!milliseconds) {
-                return interaction.reply({ content: '❌ Durée invalide (ex: 10m, 1h, 1d).', ephemeral: true });
+                return interaction.reply({ content: '❌ Durée invalide (ex: 10m, 1h, 1d).', flags: MessageFlags.Ephemeral });
             }
             if (milliseconds > 28 * 24 * 60 * 60 * 1000) {
-                return interaction.reply({ content: '❌ Durée maximale: 28 jours.', ephemeral: true });
+                return interaction.reply({ content: '❌ Durée maximale: 28 jours.', flags: MessageFlags.Ephemeral });
             }
             await member.timeout(milliseconds, reason);
             const embed = new EmbedBuilder()
@@ -414,10 +415,10 @@ client.on('interactionCreate', async (interaction) => {
             if (!(await ensurePermissions(interaction, PermissionFlagsBits.ManageMessages, PermissionFlagsBits.ManageMessages))) return;
             const amount = interaction.options.getInteger('nombre', true);
             if (amount < 1 || amount > 100) {
-                return interaction.reply({ content: '❌ Nombre entre 1 et 100.', ephemeral: true });
+                return interaction.reply({ content: '❌ Nombre entre 1 et 100.', flags: MessageFlags.Ephemeral });
             }
             const deleted = await interaction.channel.bulkDelete(amount, true);
-            await interaction.reply({ content: `✅ ${deleted.size} message(s) supprimé(s).`, ephemeral: true });
+            await interaction.reply({ content: `✅ ${deleted.size} message(s) supprimé(s).`, flags: MessageFlags.Ephemeral });
             const embed = new EmbedBuilder()
                 .setColor('#0099ff')
                 .setTitle('🧹 Purge')
@@ -458,7 +459,7 @@ client.on('interactionCreate', async (interaction) => {
                 .setTitle(`📒 Avertissements de ${target.tag}`)
                 .setDescription(formatted)
                 .setTimestamp();
-            return interaction.reply({ embeds: [embed], ephemeral: true });
+            return interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
         }
 
         if (commandName === 'unwarn') {
@@ -467,7 +468,7 @@ client.on('interactionCreate', async (interaction) => {
             const index = interaction.options.getInteger('index', true) - 1;
             const warnList = getWarnings(guild.id, target.id);
             if (index < 0 || index >= warnList.length) {
-                return interaction.reply({ content: '❌ Index invalide.', ephemeral: true });
+                return interaction.reply({ content: '❌ Index invalide.', flags: MessageFlags.Ephemeral });
             }
             const removed = warnList.splice(index, 1)[0];
             saveWarnings();
@@ -507,12 +508,12 @@ client.on('interactionCreate', async (interaction) => {
                 const channel = interaction.options.getChannel('salon', true);
                 config.logChannelId = channel.id;
                 saveGuildConfig(guild.id, config);
-                return interaction.reply({ content: `✅ Salon de logs: ${channel}.`, ephemeral: true });
+                return interaction.reply({ content: `✅ Salon de logs: ${channel}.`, flags: MessageFlags.Ephemeral });
             }
             if (sub === 'clear') {
                 config.logChannelId = null;
                 saveGuildConfig(guild.id, config);
-                return interaction.reply({ content: '✅ Salon de logs supprimé.', ephemeral: true });
+                return interaction.reply({ content: '✅ Salon de logs supprimé.', flags: MessageFlags.Ephemeral });
             }
         }
 
@@ -530,7 +531,7 @@ client.on('interactionCreate', async (interaction) => {
                         { name: 'Logs', value: config.logChannelId ? `<#${config.logChannelId}>` : 'Non defini', inline: false }
                     )
                     .setTimestamp();
-                return interaction.reply({ embeds: [embed], ephemeral: true });
+                return interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
             }
             if (sub === 'set') {
                 const key = interaction.options.getString('cle', true);
@@ -539,13 +540,13 @@ client.on('interactionCreate', async (interaction) => {
                 if (key.includes('enabled') || key.includes('blockInvites')) {
                     const boolValue = parseBoolean(value);
                     if (boolValue === null) {
-                        return interaction.reply({ content: '❌ Valeur booleenne invalide (true/false).', ephemeral: true });
+                        return interaction.reply({ content: '❌ Valeur booleenne invalide (true/false).', flags: MessageFlags.Ephemeral });
                     }
                     parsedValue = boolValue;
                 } else {
                     const intValue = parseInt(value, 10);
                     if (Number.isNaN(intValue)) {
-                        return interaction.reply({ content: '❌ Valeur numerique requise.', ephemeral: true });
+                        return interaction.reply({ content: '❌ Valeur numerique requise.', flags: MessageFlags.Ephemeral });
                     }
                     parsedValue = intValue;
                 }
@@ -556,17 +557,17 @@ client.on('interactionCreate', async (interaction) => {
                     config.antispam[key.split('.')[1]] = parsedValue;
                 }
                 saveGuildConfig(guild.id, config);
-                return interaction.reply({ content: `✅ ${key} mis a jour.`, ephemeral: true });
+                return interaction.reply({ content: `✅ ${key} mis a jour.`, flags: MessageFlags.Ephemeral });
             }
             if (sub === 'reset') {
                 saveGuildConfig(guild.id, JSON.parse(JSON.stringify(defaultGuildConfig)));
-                return interaction.reply({ content: '✅ Configuration reinitialisee.', ephemeral: true });
+                return interaction.reply({ content: '✅ Configuration reinitialisee.', flags: MessageFlags.Ephemeral });
             }
         }
     } catch (error) {
         console.error('Erreur commande:', error);
         if (!interaction.replied) {
-            await interaction.reply({ content: '❌ Erreur lors de l\'execution de la commande.', ephemeral: true });
+            await interaction.reply({ content: '❌ Erreur lors de l\'execution de la commande.', flags: MessageFlags.Ephemeral });
         }
     }
 });
