@@ -1,6 +1,7 @@
 require('dotenv').config();
 const fs = require('fs');
 const path = require('path');
+const http = require('http');
 const { statusBedrock } = require('minecraft-server-util');
 const {
     Client,
@@ -810,6 +811,21 @@ client.on('messageCreate', async (message) => {
 });
 
 client.on('error', console.error);
+
+const port = Number.parseInt(process.env.PORT, 10) || 3000;
+http
+    .createServer((req, res) => {
+        if (req.url === '/health') {
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ status: 'ok' }));
+            return;
+        }
+        res.writeHead(200, { 'Content-Type': 'text/plain' });
+        res.end('ElyndraBot running');
+    })
+    .listen(port, () => {
+        console.log(`🌐 HTTP server listening on ${port}`);
+    });
 
 process.on('unhandledRejection', error => {
     console.error('Unhandled promise rejection:', error);
