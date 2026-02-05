@@ -1,11 +1,15 @@
 require('dotenv').config();
 const fs = require('fs');
 const path = require('path');
+const { statusBedrock } = require('minecraft-server-util');
 const {
     Client,
     GatewayIntentBits,
     Partials,
     PermissionFlagsBits,
+    ActionRowBuilder,
+    ButtonBuilder,
+    ButtonStyle,
     EmbedBuilder,
     MessageFlags,
     REST,
@@ -14,9 +18,18 @@ const {
 } = require('discord.js');
 
 const DATA_DIR = path.join(__dirname, 'data');
+const CONFIG_DIR = path.join(__dirname, 'config');
 const CONFIG_PATH = path.join(DATA_DIR, 'config.json');
 const WARNINGS_PATH = path.join(DATA_DIR, 'warnings.json');
+const MC_CONFIG_PATH = path.join(CONFIG_DIR, 'minecraft.json');
 const TIME_REGEX = /^(\d+)([smhd])$/;
+const PANEL_COLOR = '#f1c40f';
+const defaultMinecraftConfig = {
+    title: 'Informations Minecraft',
+    host: 'elyndra.mcbe.fr',
+    port: 19132,
+    versionOverride: ''
+};
 
 const client = new Client({
     intents: [
@@ -34,6 +47,15 @@ const antiSpamCache = new Map();
 function ensureDataFile(filePath, defaultValue) {
     if (!fs.existsSync(DATA_DIR)) {
         fs.mkdirSync(DATA_DIR, { recursive: true });
+    }
+    if (!fs.existsSync(filePath)) {
+        fs.writeFileSync(filePath, JSON.stringify(defaultValue, null, 2));
+    }
+}
+
+function ensureConfigFile(filePath, defaultValue) {
+    if (!fs.existsSync(CONFIG_DIR)) {
+        fs.mkdirSync(CONFIG_DIR, { recursive: true });
     }
     if (!fs.existsSync(filePath)) {
         fs.writeFileSync(filePath, JSON.stringify(defaultValue, null, 2));
@@ -74,6 +96,7 @@ const defaultGuildConfig = {
 
 ensureDataFile(CONFIG_PATH, {});
 ensureDataFile(WARNINGS_PATH, {});
+ensureConfigFile(MC_CONFIG_PATH, defaultMinecraftConfig);
 
 const guildConfigs = readJson(CONFIG_PATH, {});
 const warningsStore = readJson(WARNINGS_PATH, {});
@@ -99,6 +122,10 @@ function getWarnings(guildId, userId) {
 
 function saveWarnings() {
     writeJson(WARNINGS_PATH, warningsStore);
+}
+
+function getMinecraftConfig() {
+    return readJson(MC_CONFIG_PATH, defaultMinecraftConfig);
 }
 
 function parseDuration(duration) {
@@ -143,6 +170,70 @@ function capsPercent(content) {
     return Math.round((caps / letters.length) * 100);
 }
 
+function buildServerInfoEmbed(guild) {
+    return new EmbedBuilder()
+        .setColor(PANEL_COLOR)
+        .setTitle(`Information serveur ${guild.name}`)
+        .setThumbnail(guild.iconURL({ dynamic: true }))
+        .addFields(
+            { name: '👑 Proprietaire', value: `<@${guild.ownerId}>`, inline: true },
+            { name: '👥 Membres', value: `${guild.memberCount}`, inline: true },
+            { name: '📅 Cree le', value: guild.createdAt.toLocaleDateString('fr-FR'), inline: true },
+            { name: '💬 Salons texte', value: `${guild.channels.cache.filter(channel => channel.isTextBased()).size}`, inline: true },
+            { name: '🔊 Salons vocaux', value: `${guild.channels.cache.filter(channel => channel.isVoiceBased()).size}`, inline: true },
+            { name: '📝 Roles', value: `${guild.roles.cache.size}`, inline: true },
+            { name: '✨ Boosts', value: `${guild.premiumSubscriptionCount ?? 0}`, inline: true }
+        )
+        .setTimestamp();
+}
+
+function buildMinecraftPanelEmbed(config, status) {
+    const isOnline = status?.online === true;
+    const players = isOnline
+        ? `${status.playersOnline}/${status.playersMax}`
+        : '0/0';
+    const version = isOnline
+        ? status.versionName
+        : (config.versionOverride || 'Inconnu');
+    const motd = isOnline && status.motdClean
+        ? status.motdClean.slice(0, 200)
+        : 'Non disponible';
+    const ping = isOnline && typeof status.pingMs === 'number'
+        ? `${status.pingMs} ms`
+        : 'N/A';
+    return new EmbedBuilder()
+        .setColor(PANEL_COLOR)
+        .setTitle(config.title)
+        .addFields(
+            { name: '» Statut', value: isOnline ? 'En ligne' : 'Hors ligne', inline: false },
+            { name: '» IP', value: config.host, inline: false },
+            { name: '» Port', value: String(config.port), inline: false },
+            { name: '» Joueurs', value: players, inline: false },
+            { name: '» Version', value: version, inline: false },
+            { name: '» Ping', value: ping, inline: false },
+            { name: '» MOTD', value: motd, inline: false }
+        )
+        .setTimestamp();
+}
+
+async function fetchMinecraftStatus(config) {
+    try {
+        const startedAt = Date.now();
+        const result = await statusBedrock(config.host, config.port, { timeout: 3000 });
+        const pingMs = Date.now() - startedAt;
+        return {
+            online: true,
+            playersOnline: result.players?.online ?? 0,
+            playersMax: result.players?.max ?? 0,
+            versionName: result.version?.name || 'Inconnu',
+            motdClean: result.motd?.clean || result.motd?.raw || '',
+            pingMs
+        };
+    } catch (error) {
+        return { online: false };
+    }
+}
+
 async function sendModLog(guild, embed) {
     const config = getGuildConfig(guild.id);
     if (!config.logChannelId) return;
@@ -169,6 +260,15 @@ async function registerSlashCommands() {
         new SlashCommandBuilder().setName('ping').setDescription('Afficher la latence du bot'),
         new SlashCommandBuilder().setName('help').setDescription('Afficher la liste des commandes'),
         new SlashCommandBuilder().setName('server').setDescription('Infos sur le serveur'),
+        new SlashCommandBuilder()
+            .setName('panel')
+            .setDescription('Panneaux d\'information pour les membres')
+            .addSubcommand(sub => sub
+                .setName('serverinfo')
+                .setDescription('Publier le panneau d\'information serveur'))
+            .addSubcommand(sub => sub
+                .setName('mcinfo')
+                .setDescription('Publier le panneau d\'information Minecraft')),
         new SlashCommandBuilder()
             .setName('kick')
             .setDescription('Expulser un membre')
@@ -272,6 +372,16 @@ client.once('clientReady', async () => {
 });
 
 client.on('interactionCreate', async (interaction) => {
+    if (interaction.isButton()) {
+        if (interaction.customId === 'panel_serverinfo') {
+            const guild = interaction.guild;
+            if (!guild) return;
+            const embed = buildServerInfoEmbed(guild);
+            await interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
+        }
+        return;
+    }
+
     if (!interaction.isChatInputCommand()) return;
 
     const { commandName } = interaction;
@@ -295,26 +405,43 @@ client.on('interactionCreate', async (interaction) => {
                 .setDescription('Principales commandes de moderation et configuration.')
                 .addFields(
                     { name: 'Moderation', value: '/kick /ban /unban /timeout /clear /warn /warnings /unwarn /clearwarnings', inline: false },
-                    { name: 'Configuration', value: '/modlog set|clear /config view|set|reset', inline: false }
+                    { name: 'Configuration', value: '/modlog set|clear /config view|set|reset', inline: false },
+                    { name: 'Panels membres', value: '/panel serverinfo /panel mcinfo', inline: false }
                 )
                 .setTimestamp();
             return interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
         }
 
         if (commandName === 'server') {
-            const embed = new EmbedBuilder()
-                .setColor('#0099ff')
-                .setTitle(`📊 Informations sur ${guild.name}`)
-                .setThumbnail(guild.iconURL({ dynamic: true }))
-                .addFields(
-                    { name: '👑 Propriétaire', value: `<@${guild.ownerId}>`, inline: true },
-                    { name: '👥 Membres', value: `${guild.memberCount}`, inline: true },
-                    { name: '📅 Créé le', value: guild.createdAt.toLocaleDateString('fr-FR'), inline: true },
-                    { name: '📝 Rôles', value: `${guild.roles.cache.size}`, inline: true },
-                    { name: '💬 Salons', value: `${guild.channels.cache.size}`, inline: true }
-                )
-                .setTimestamp();
+            const embed = buildServerInfoEmbed(guild);
             return interaction.reply({ embeds: [embed] });
+        }
+
+        if (commandName === 'panel') {
+            const sub = interaction.options.getSubcommand();
+            if (sub === 'serverinfo') {
+                const embed = new EmbedBuilder()
+                    .setColor(PANEL_COLOR)
+                    .setTitle(`Information serveur ${guild.name}`)
+                    .setDescription('Clique sur le bouton pour afficher les informations du serveur.')
+                    .setThumbnail(guild.iconURL({ dynamic: true }))
+                    .setTimestamp();
+                const row = new ActionRowBuilder().addComponents(
+                    new ButtonBuilder()
+                        .setCustomId('panel_serverinfo')
+                        .setLabel('Voir les infos')
+                        .setStyle(ButtonStyle.Secondary)
+                );
+                await interaction.reply({ embeds: [embed], components: [row] });
+                return;
+            }
+            if (sub === 'mcinfo') {
+                const config = getMinecraftConfig();
+                const status = await fetchMinecraftStatus(config);
+                const embed = buildMinecraftPanelEmbed(config, status);
+                await interaction.reply({ embeds: [embed] });
+                return;
+            }
         }
 
         if (commandName === 'kick') {
