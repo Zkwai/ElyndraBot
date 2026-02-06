@@ -180,6 +180,15 @@ function parseBoolean(value) {
     return null;
 }
 
+function parseGuildIds() {
+    const raw = String(process.env.GUILD_ID || '').trim();
+    if (!raw) return [];
+    return raw
+        .split(',')
+        .map(value => value.trim())
+        .filter(Boolean);
+}
+
 function normalizeGamertag(gamertag) {
     return String(gamertag || '').trim().toLowerCase();
 }
@@ -244,11 +253,19 @@ function unlinkByGamertag(gamertag) {
 }
 
 async function resolveGroupForDiscord(discordId) {
-    const guildId = process.env.GUILD_ID || client.guilds.cache.first()?.id;
-    if (!guildId) return null;
-    const guild = client.guilds.cache.get(guildId);
-    if (!guild) return null;
-    const member = await guild.members.fetch(discordId).catch(() => null);
+    const guildIds = parseGuildIds();
+    const targetGuilds = guildIds.length > 0
+        ? guildIds
+        : client.guilds.cache.map(guild => guild.id);
+    if (targetGuilds.length === 0) return null;
+
+    let member = null;
+    for (const guildId of targetGuilds) {
+        const guild = client.guilds.cache.get(guildId);
+        if (!guild) continue;
+        member = await guild.members.fetch(discordId).catch(() => null);
+        if (member) break;
+    }
     if (!member) return null;
 
     const roleEntries = Array.isArray(roleMap.roles) ? roleMap.roles : [];
@@ -478,12 +495,15 @@ async function registerSlashCommands() {
     ].map(command => command.toJSON());
 
     const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
-    if (process.env.GUILD_ID) {
-        await rest.put(
-            Routes.applicationGuildCommands(process.env.CLIENT_ID, process.env.GUILD_ID),
-            { body: commands }
-        );
-        console.log(`✅ Slash commands synchronisees pour le serveur ${process.env.GUILD_ID}.`);
+    const guildIds = parseGuildIds();
+    if (guildIds.length > 0) {
+        for (const guildId of guildIds) {
+            await rest.put(
+                Routes.applicationGuildCommands(process.env.CLIENT_ID, guildId),
+                { body: commands }
+            );
+            console.log(`✅ Slash commands synchronisees pour le serveur ${guildId}.`);
+        }
         return;
     }
 
