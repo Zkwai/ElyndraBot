@@ -22,16 +22,25 @@ const DATA_DIR = path.join(__dirname, 'data');
 const CONFIG_DIR = path.join(__dirname, 'config');
 const CONFIG_PATH = path.join(DATA_DIR, 'config.json');
 const WARNINGS_PATH = path.join(DATA_DIR, 'warnings.json');
+const LINKS_PATH = path.join(DATA_DIR, 'links.json');
+const LINK_CODES_PATH = path.join(DATA_DIR, 'link_codes.json');
+const ROLE_MAP_PATH = path.join(DATA_DIR, 'role_map.json');
 const MC_CONFIG_PATH = path.join(CONFIG_DIR, 'minecraft.json');
 const TIME_REGEX = /^(\d+)([smhd])$/;
 const PANEL_COLOR = '#f1c40f';
 const CREDIT_TEXT = 'aimbot.sprx';
 const CREDIT_ICON_URL = 'https://cdn.discordapp.com/avatars/396332601717293056/05cc4947c620300904d645739e53f8d7.png?size=1024';
+const LINK_CODE_TTL_MS = 10 * 60 * 1000;
+const LINK_SECRET = process.env.LINK_SECRET || '';
 const defaultMinecraftConfig = {
     title: 'Informations Minecraft',
     host: 'elyndra.mcbe.fr',
     port: 19132,
     versionOverride: ''
+};
+const defaultRoleMap = {
+    defaultGroup: 'default',
+    roles: []
 };
 
 const client = new Client({
@@ -99,10 +108,16 @@ const defaultGuildConfig = {
 
 ensureDataFile(CONFIG_PATH, {});
 ensureDataFile(WARNINGS_PATH, {});
+ensureDataFile(LINKS_PATH, { byGamertag: {}, byDiscordId: {} });
+ensureDataFile(LINK_CODES_PATH, {});
+ensureDataFile(ROLE_MAP_PATH, defaultRoleMap);
 ensureConfigFile(MC_CONFIG_PATH, defaultMinecraftConfig);
 
 const guildConfigs = readJson(CONFIG_PATH, {});
 const warningsStore = readJson(WARNINGS_PATH, {});
+const linksStore = readJson(LINKS_PATH, { byGamertag: {}, byDiscordId: {} });
+const linkCodes = readJson(LINK_CODES_PATH, {});
+const roleMap = readJson(ROLE_MAP_PATH, defaultRoleMap);
 
 function getGuildConfig(guildId) {
     if (!guildConfigs[guildId]) {
@@ -125,6 +140,14 @@ function getWarnings(guildId, userId) {
 
 function saveWarnings() {
     writeJson(WARNINGS_PATH, warningsStore);
+}
+
+function saveLinks() {
+    writeJson(LINKS_PATH, linksStore);
+}
+
+function saveLinkCodes() {
+    writeJson(LINK_CODES_PATH, linkCodes);
 }
 
 function getMinecraftConfig() {
@@ -155,6 +178,92 @@ function parseBoolean(value) {
     if (['true', '1', 'yes', 'on'].includes(normalized)) return true;
     if (['false', '0', 'no', 'off'].includes(normalized)) return false;
     return null;
+}
+
+function normalizeGamertag(gamertag) {
+    return String(gamertag || '').trim().toLowerCase();
+}
+
+function generateLinkCode() {
+    const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    let code = '';
+    for (let i = 0; i < 8; i += 1) {
+        code += alphabet[Math.floor(Math.random() * alphabet.length)];
+    }
+    return code.slice(0, 4) + '-' + code.slice(4);
+}
+
+function pruneExpiredCodes() {
+    const now = Date.now();
+    for (const [code, entry] of Object.entries(linkCodes)) {
+        if (!entry || typeof entry.expiresAt !== 'number' || entry.expiresAt <= now) {
+            delete linkCodes[code];
+        }
+    }
+}
+
+function linkDiscordToGamertag(discordId, gamertag) {
+    const normalized = normalizeGamertag(gamertag);
+    if (!normalized) return null;
+
+    const existingDiscord = linksStore.byDiscordId[discordId];
+    if (existingDiscord?.gamertag) {
+        delete linksStore.byGamertag[normalizeGamertag(existingDiscord.gamertag)];
+    }
+
+    const existingGamertag = linksStore.byGamertag[normalized];
+    if (existingGamertag?.discordId) {
+        delete linksStore.byDiscordId[existingGamertag.discordId];
+    }
+
+    const linkedAt = new Date().toISOString();
+    const entry = { gamertag: gamertag.trim(), discordId, linkedAt };
+    linksStore.byGamertag[normalized] = entry;
+    linksStore.byDiscordId[discordId] = entry;
+    saveLinks();
+    return entry;
+}
+
+function unlinkByDiscordId(discordId) {
+    const entry = linksStore.byDiscordId[discordId];
+    if (!entry) return false;
+    delete linksStore.byDiscordId[discordId];
+    delete linksStore.byGamertag[normalizeGamertag(entry.gamertag)];
+    saveLinks();
+    return true;
+}
+
+function unlinkByGamertag(gamertag) {
+    const normalized = normalizeGamertag(gamertag);
+    const entry = linksStore.byGamertag[normalized];
+    if (!entry) return false;
+    delete linksStore.byGamertag[normalized];
+    delete linksStore.byDiscordId[entry.discordId];
+    saveLinks();
+    return true;
+}
+
+async function resolveGroupForDiscord(discordId) {
+    const guildId = process.env.GUILD_ID || client.guilds.cache.first()?.id;
+    if (!guildId) return null;
+    const guild = client.guilds.cache.get(guildId);
+    if (!guild) return null;
+    const member = await guild.members.fetch(discordId).catch(() => null);
+    if (!member) return null;
+
+    const roleEntries = Array.isArray(roleMap.roles) ? roleMap.roles : [];
+    let best = null;
+    for (const roleEntry of roleEntries) {
+        if (!roleEntry || !roleEntry.discordRoleId || !roleEntry.group) continue;
+        if (!member.roles.cache.has(roleEntry.discordRoleId)) continue;
+        const priority = Number(roleEntry.priority) || 0;
+        if (!best || priority > best.priority) {
+            best = { group: roleEntry.group, priority };
+        }
+    }
+
+    if (best?.group) return best.group;
+    return roleMap.defaultGroup || null;
 }
 
 function countLinks(content) {
@@ -267,6 +376,13 @@ async function registerSlashCommands() {
         new SlashCommandBuilder().setName('ping').setDescription('Afficher la latence du bot'),
         new SlashCommandBuilder().setName('help').setDescription('Afficher la liste des commandes'),
         new SlashCommandBuilder().setName('ip').setDescription('Infos Minecraft (meme que panel mcinfo)'),
+        new SlashCommandBuilder()
+            .setName('link')
+            .setDescription('Lier ton compte Minecraft avec un code')
+            .addStringOption(option => option.setName('code').setDescription('Code donne en jeu').setRequired(true)),
+        new SlashCommandBuilder()
+            .setName('unlink')
+            .setDescription('Retirer la liaison Minecraft'),
         new SlashCommandBuilder().setName('server').setDescription('Infos sur le serveur'),
         new SlashCommandBuilder()
             .setName('panel')
@@ -423,7 +539,8 @@ client.on('interactionCreate', async (interaction) => {
                 .addFields(
                     { name: 'Moderation', value: '/kick /ban /unban /timeout /clear /warn /warnings /unwarn /clearwarnings', inline: false },
                     { name: 'Configuration', value: '/modlog set|clear /config view|set|reset', inline: false },
-                    { name: 'Panels membres', value: '/panel serverinfo /panel mcinfo /ip', inline: false }
+                    { name: 'Panels membres', value: '/panel serverinfo /panel mcinfo /ip', inline: false },
+                    { name: 'Minecraft', value: '/link /unlink', inline: false }
                 )
                 .setTimestamp();
             return interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
@@ -469,6 +586,32 @@ client.on('interactionCreate', async (interaction) => {
             const embed = buildMinecraftPanelEmbed(config, status);
             await interaction.editReply({ embeds: [embed] });
             return;
+        }
+
+        if (commandName === 'link') {
+            pruneExpiredCodes();
+            const code = interaction.options.getString('code', true).trim().toUpperCase();
+            const entry = linkCodes[code];
+            if (!entry || typeof entry.expiresAt !== 'number' || entry.expiresAt <= Date.now()) {
+                delete linkCodes[code];
+                saveLinkCodes();
+                return interaction.reply({ content: '❌ Code invalide ou expire.', flags: MessageFlags.Ephemeral });
+            }
+            const linked = linkDiscordToGamertag(interaction.user.id, entry.gamertag);
+            delete linkCodes[code];
+            saveLinkCodes();
+            if (!linked) {
+                return interaction.reply({ content: '❌ Gamertag invalide.', flags: MessageFlags.Ephemeral });
+            }
+            return interaction.reply({ content: `✅ Compte lie a ${linked.gamertag}.`, flags: MessageFlags.Ephemeral });
+        }
+
+        if (commandName === 'unlink') {
+            const removed = unlinkByDiscordId(interaction.user.id);
+            if (!removed) {
+                return interaction.reply({ content: '❌ Aucune liaison trouvee.', flags: MessageFlags.Ephemeral });
+            }
+            return interaction.reply({ content: '✅ Liaison supprimee.', flags: MessageFlags.Ephemeral });
         }
 
         if (commandName === 'kick') {
@@ -816,16 +959,99 @@ client.on('messageCreate', async (message) => {
 
 client.on('error', console.error);
 
+function isAuthorized(req) {
+    if (!LINK_SECRET) return true;
+    return req.headers['x-link-secret'] === LINK_SECRET;
+}
+
+function sendJson(res, status, payload) {
+    res.writeHead(status, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(payload));
+}
+
+function readRequestBody(req) {
+    return new Promise((resolve, reject) => {
+        let data = '';
+        req.on('data', chunk => {
+            data += chunk;
+            if (data.length > 1024 * 1024) {
+                reject(new Error('Payload too large'));
+                req.destroy();
+            }
+        });
+        req.on('end', () => resolve(data));
+        req.on('error', reject);
+    });
+}
+
 const port = Number.parseInt(process.env.PORT, 10) || 3000;
 http
-    .createServer((req, res) => {
-        if (req.url === '/health') {
-            res.writeHead(200, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ status: 'ok' }));
-            return;
+    .createServer(async (req, res) => {
+        const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+
+        if (req.method === 'GET' && url.pathname === '/health') {
+            return sendJson(res, 200, { status: 'ok' });
         }
-        res.writeHead(200, { 'Content-Type': 'text/plain' });
-        res.end('ElyndraBot running');
+
+        if (!isAuthorized(req)) {
+            return sendJson(res, 401, { error: 'unauthorized' });
+        }
+
+        if (req.method === 'GET' && url.pathname === '/link/resolve') {
+            const gamertag = url.searchParams.get('gamertag');
+            const normalized = normalizeGamertag(gamertag);
+            if (!normalized) return sendJson(res, 400, { error: 'gamertag_required' });
+            const entry = linksStore.byGamertag[normalized];
+            if (!entry) return sendJson(res, 200, { linked: false });
+            const group = client.isReady()
+                ? await resolveGroupForDiscord(entry.discordId)
+                : null;
+            return sendJson(res, 200, {
+                linked: true,
+                gamertag: entry.gamertag,
+                discordId: entry.discordId,
+                group
+            });
+        }
+
+        if (req.method === 'POST' && url.pathname === '/link/code') {
+            try {
+                const raw = await readRequestBody(req);
+                const body = raw ? JSON.parse(raw) : {};
+                const gamertag = String(body.gamertag || '').trim();
+                if (!gamertag) return sendJson(res, 400, { error: 'gamertag_required' });
+                pruneExpiredCodes();
+                const code = generateLinkCode();
+                linkCodes[code] = {
+                    gamertag,
+                    createdAt: Date.now(),
+                    expiresAt: Date.now() + LINK_CODE_TTL_MS
+                };
+                saveLinkCodes();
+                return sendJson(res, 200, { code, expiresAt: linkCodes[code].expiresAt });
+            } catch (error) {
+                return sendJson(res, 400, { error: 'invalid_json' });
+            }
+        }
+
+        if (req.method === 'POST' && url.pathname === '/link/unlink') {
+            try {
+                const raw = await readRequestBody(req);
+                const body = raw ? JSON.parse(raw) : {};
+                const gamertag = String(body.gamertag || '').trim();
+                const discordId = String(body.discordId || '').trim();
+                if (!gamertag && !discordId) return sendJson(res, 400, { error: 'identifier_required' });
+                const removed = gamertag
+                    ? unlinkByGamertag(gamertag)
+                    : unlinkByDiscordId(discordId);
+                return sendJson(res, 200, { removed });
+            } catch (error) {
+                return sendJson(res, 400, { error: 'invalid_json' });
+            }
+        }
+
+        res.writeHead(404, { 'Content-Type': 'text/plain' });
+        res.end('Not Found');
     })
     .listen(port, () => {
         console.log(`🌐 HTTP server listening on ${port}`);

@@ -1,0 +1,10 @@
+{
+  "defaultGroup": "default",
+  "roles": [
+    {
+      "discordRoleId": "123456789012345678",
+      "group": "vip",
+      "priority": 10
+    }
+  ]
+}

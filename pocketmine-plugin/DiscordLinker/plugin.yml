@@ -1,0 +1,22 @@
+name: DiscordLinker
+main: Zkwai\DiscordLinker\Main
+version: 1.0.0
+api: [5.0.0]
+author: ZK
+depend: [PurePerms]
+
+commands:
+  link:
+    description: Generate a code to link Discord.
+    usage: "/link"
+    permission: discordlinker.link
+  unlink:
+    description: Unlink Discord account.
+    usage: "/unlink"
+    permission: discordlinker.unlink
+
+permissions:
+  discordlinker.link:
+    default: true
+  discordlinker.unlink:
+    default: true
