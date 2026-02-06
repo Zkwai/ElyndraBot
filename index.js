@@ -453,19 +453,21 @@ client.on('interactionCreate', async (interaction) => {
                 return;
             }
             if (sub === 'mcinfo') {
+                await interaction.deferReply();
                 const config = getMinecraftConfig();
                 const status = await fetchMinecraftStatus(config);
                 const embed = buildMinecraftPanelEmbed(config, status);
-                await interaction.reply({ embeds: [embed] });
+                await interaction.editReply({ embeds: [embed] });
                 return;
             }
         }
 
         if (commandName === 'ip') {
+            await interaction.deferReply();
             const config = getMinecraftConfig();
             const status = await fetchMinecraftStatus(config);
             const embed = buildMinecraftPanelEmbed(config, status);
-            await interaction.reply({ embeds: [embed] });
+            await interaction.editReply({ embeds: [embed] });
             return;
         }
 
@@ -718,9 +720,11 @@ client.on('interactionCreate', async (interaction) => {
         }
     } catch (error) {
         console.error('Erreur commande:', error);
-        if (!interaction.replied) {
+        if (!interaction.replied && !interaction.deferred) {
             await interaction.reply({ content: '❌ Erreur lors de l\'execution de la commande.', flags: MessageFlags.Ephemeral });
+            return;
         }
+        await interaction.editReply({ content: '❌ Erreur lors de l\'execution de la commande.' }).catch(() => {});
     }
 });
 
