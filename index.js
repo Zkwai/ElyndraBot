@@ -93,6 +93,8 @@ const defaultGuildConfig = {
     automod: {
         enabled: true,
         blockInvites: true,
+        linkAllowedChannelIds: [],
+        allowInvitesInLinkChannels: false,
         maxMentions: 5,
         maxLinks: 3,
         maxCapsPercent: 70,
@@ -124,7 +126,24 @@ function getGuildConfig(guildId) {
         guildConfigs[guildId] = JSON.parse(JSON.stringify(defaultGuildConfig));
         writeJson(CONFIG_PATH, guildConfigs);
     }
-    return guildConfigs[guildId];
+    const config = guildConfigs[guildId];
+    const merged = {
+        ...defaultGuildConfig,
+        ...config,
+        automod: {
+            ...defaultGuildConfig.automod,
+            ...(config.automod || {})
+        },
+        antispam: {
+            ...defaultGuildConfig.antispam,
+            ...(config.antispam || {})
+        }
+    };
+    if (JSON.stringify(merged) !== JSON.stringify(config)) {
+        guildConfigs[guildId] = merged;
+        writeJson(CONFIG_PATH, guildConfigs);
+    }
+    return merged;
 }
 
 function saveGuildConfig(guildId, config) {
@@ -479,6 +498,8 @@ async function registerSlashCommands() {
                     .addChoices(
                         { name: 'automod.enabled', value: 'automod.enabled' },
                         { name: 'automod.blockInvites', value: 'automod.blockInvites' },
+                        { name: 'automod.linkAllowedChannelIds', value: 'automod.linkAllowedChannelIds' },
+                        { name: 'automod.allowInvitesInLinkChannels', value: 'automod.allowInvitesInLinkChannels' },
                         { name: 'automod.maxMentions', value: 'automod.maxMentions' },
                         { name: 'automod.maxLinks', value: 'automod.maxLinks' },
                         { name: 'automod.maxCapsPercent', value: 'automod.maxCapsPercent' },
@@ -843,7 +864,7 @@ client.on('interactionCreate', async (interaction) => {
                     .setColor(PANEL_COLOR)
                     .setTitle('⚙️ Configuration de modération')
                     .addFields(
-                        { name: 'Automod', value: `enabled=${config.automod.enabled}\nblockInvites=${config.automod.blockInvites}\nmaxMentions=${config.automod.maxMentions}\nmaxLinks=${config.automod.maxLinks}\nmaxCapsPercent=${config.automod.maxCapsPercent}\nminCapsLength=${config.automod.minCapsLength}`, inline: false },
+                        { name: 'Automod', value: `enabled=${config.automod.enabled}\nblockInvites=${config.automod.blockInvites}\nlinkAllowedChannelIds=${(config.automod.linkAllowedChannelIds || []).join(',') || 'aucun'}\nallowInvitesInLinkChannels=${config.automod.allowInvitesInLinkChannels}\nmaxMentions=${config.automod.maxMentions}\nmaxLinks=${config.automod.maxLinks}\nmaxCapsPercent=${config.automod.maxCapsPercent}\nminCapsLength=${config.automod.minCapsLength}`, inline: false },
                         { name: 'Anti-spam', value: `enabled=${config.antispam.enabled}\nintervalMs=${config.antispam.intervalMs}\nmaxMessages=${config.antispam.maxMessages}\ntimeoutMs=${config.antispam.timeoutMs}`, inline: false },
                         { name: 'Logs', value: config.logChannelId ? `<#${config.logChannelId}>` : 'Non defini', inline: false }
                     )
@@ -854,7 +875,12 @@ client.on('interactionCreate', async (interaction) => {
                 const key = interaction.options.getString('cle', true);
                 const value = interaction.options.getString('valeur', true);
                 let parsedValue = value;
-                if (key.includes('enabled') || key.includes('blockInvites')) {
+                if (key === 'automod.linkAllowedChannelIds') {
+                    const normalized = value.trim();
+                    parsedValue = normalized
+                        ? normalized.split(',').map(entry => entry.trim()).filter(Boolean)
+                        : [];
+                } else if (key.includes('enabled') || key.includes('blockInvites') || key.includes('allowInvitesInLinkChannels')) {
                     const boolValue = parseBoolean(value);
                     if (boolValue === null) {
                         return interaction.reply({ content: '❌ Valeur booleenne invalide (true/false).', flags: MessageFlags.Ephemeral });
@@ -900,8 +926,14 @@ client.on('messageCreate', async (message) => {
         const linksCount = countLinks(message.content);
         const capsRatio = capsPercent(message.content);
         const capsLength = message.content.replace(/[^A-Z]/g, '').length;
+        const linkAllowedChannelIds = Array.isArray(config.automod.linkAllowedChannelIds)
+            ? config.automod.linkAllowedChannelIds
+            : [];
+        const isLinkAllowedChannel = linkAllowedChannelIds.includes(message.channel.id);
 
-        if (config.automod.blockInvites && hasInvite(message.content)) {
+        if (config.automod.blockInvites
+            && (!isLinkAllowedChannel || !config.automod.allowInvitesInLinkChannels)
+            && hasInvite(message.content)) {
             await message.delete().catch(() => {});
             await message.channel.send('❌ Lien d\'invitation interdit.').then(msg => setTimeout(() => msg.delete().catch(() => {}), 5000));
             const embed = new EmbedBuilder()
@@ -925,7 +957,7 @@ client.on('messageCreate', async (message) => {
             return;
         }
 
-        if (linksCount > config.automod.maxLinks) {
+        if (!isLinkAllowedChannel && linksCount > config.automod.maxLinks) {
             await message.delete().catch(() => {});
             await message.channel.send('❌ Trop de liens.').then(msg => setTimeout(() => msg.delete().catch(() => {}), 5000));
             const embed = new EmbedBuilder()
