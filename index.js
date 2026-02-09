@@ -65,6 +65,14 @@ const client = new Client({
     partials: [Partials.Message, Partials.Channel, Partials.Reaction]
 });
 
+console.log('🔐 Intents configurés:');
+console.log('   • Guilds');
+console.log('   • GuildMessages');
+console.log('   • MessageContent (PRIVILEGED)');
+console.log('   • GuildMembers (PRIVILEGED)');
+console.log('   • GuildModeration');
+console.log('   • GuildMessageReactions');
+
 const antiSpamCache = new Map();
 
 function ensureDataFile(filePath, defaultValue) {
