@@ -11,6 +11,11 @@ const {
     ActionRowBuilder,
     ButtonBuilder,
     ButtonStyle,
+    SelectMenuBuilder,
+    StringSelectMenuBuilder,
+    ModalBuilder,
+    TextInputBuilder,
+    TextInputStyle,
     EmbedBuilder,
     MessageFlags,
     REST,
@@ -25,6 +30,7 @@ const WARNINGS_PATH = path.join(DATA_DIR, 'warnings.json');
 const LINKS_PATH = path.join(DATA_DIR, 'links.json');
 const LINK_CODES_PATH = path.join(DATA_DIR, 'link_codes.json');
 const ROLE_MAP_PATH = path.join(DATA_DIR, 'role_map.json');
+const REACTION_PANELS_PATH = path.join(DATA_DIR, 'reaction_panels.json');
 const MC_CONFIG_PATH = path.join(CONFIG_DIR, 'minecraft.json');
 const TIME_REGEX = /^(\d+)([smhd])$/;
 const PANEL_COLOR = '#f1c40f';
@@ -41,6 +47,9 @@ const defaultMinecraftConfig = {
 const defaultRoleMap = {
     defaultGroup: 'default',
     roles: []
+};
+const defaultReactionPanels = {
+    panels: {}
 };
 
 const client = new Client({
@@ -113,6 +122,7 @@ ensureDataFile(WARNINGS_PATH, {});
 ensureDataFile(LINKS_PATH, { byGamertag: {}, byDiscordId: {} });
 ensureDataFile(LINK_CODES_PATH, {});
 ensureDataFile(ROLE_MAP_PATH, defaultRoleMap);
+ensureDataFile(REACTION_PANELS_PATH, defaultReactionPanels);
 ensureConfigFile(MC_CONFIG_PATH, defaultMinecraftConfig);
 
 const guildConfigs = readJson(CONFIG_PATH, {});
@@ -120,6 +130,7 @@ const warningsStore = readJson(WARNINGS_PATH, {});
 const linksStore = readJson(LINKS_PATH, { byGamertag: {}, byDiscordId: {} });
 const linkCodes = readJson(LINK_CODES_PATH, {});
 const roleMap = readJson(ROLE_MAP_PATH, defaultRoleMap);
+const reactionPanels = readJson(REACTION_PANELS_PATH, defaultReactionPanels);
 
 function getGuildConfig(guildId) {
     if (!guildConfigs[guildId]) {
@@ -167,6 +178,10 @@ function saveLinks() {
 
 function saveLinkCodes() {
     writeJson(LINK_CODES_PATH, linkCodes);
+}
+
+function saveReactionPanels() {
+    writeJson(REACTION_PANELS_PATH, reactionPanels);
 }
 
 function getMinecraftConfig() {
@@ -302,6 +317,69 @@ async function resolveGroupForDiscord(discordId) {
     return roleMap.defaultGroup || null;
 }
 
+// Reaction Panel Functions
+function createReactionPanel(guildId, panelId, title, description) {
+    if (!reactionPanels.panels[guildId]) {
+        reactionPanels.panels[guildId] = {};
+    }
+    reactionPanels.panels[guildId][panelId] = {
+        title,
+        description,
+        messageId: null,
+        channelId: null,
+        reactions: {}
+    };
+    saveReactionPanels();
+    return reactionPanels.panels[guildId][panelId];
+}
+
+function deleteReactionPanel(guildId, panelId) {
+    if (reactionPanels.panels[guildId]?.[panelId]) {
+        delete reactionPanels.panels[guildId][panelId];
+        saveReactionPanels();
+        return true;
+    }
+    return false;
+}
+
+function getReactionPanel(guildId, panelId) {
+    return reactionPanels.panels[guildId]?.[panelId] || null;
+}
+
+function getReactionPanelByMessage(guildId, messageId) {
+    for (const [panelId, panel] of Object.entries(reactionPanels.panels[guildId] || {})) {
+        if (panel.messageId === messageId) {
+            return { panelId, panel };
+        }
+    }
+    return null;
+}
+
+function addReactionRole(guildId, panelId, emoji, roleId) {
+    const panel = getReactionPanel(guildId, panelId);
+    if (!panel) return false;
+    panel.reactions[emoji] = roleId;
+    saveReactionPanels();
+    return true;
+}
+
+function removeReactionRole(guildId, panelId, emoji) {
+    const panel = getReactionPanel(guildId, panelId);
+    if (!panel) return false;
+    delete panel.reactions[emoji];
+    saveReactionPanels();
+    return true;
+}
+
+function updatePanelMessage(guildId, panelId, messageId, channelId) {
+    const panel = getReactionPanel(guildId, panelId);
+    if (!panel) return false;
+    panel.messageId = messageId;
+    panel.channelId = channelId;
+    saveReactionPanels();
+    return true;
+}
+
 function countLinks(content) {
     const matches = content.match(/https?:\/\//gi);
     return matches ? matches.length : 0;
@@ -316,6 +394,122 @@ function capsPercent(content) {
     if (letters.length === 0) return 0;
     const caps = letters.replace(/[^A-Z]/g, '').length;
     return Math.round((caps / letters.length) * 100);
+}
+
+// Config Panel Functions
+function buildConfigPanelEmbed(guild) {
+    return applyCredit(new EmbedBuilder()
+        .setColor(PANEL_COLOR)
+        .setTitle('⚙️ Configuration')
+        .setDescription('Bienvenue dans le panneau de configuration d\'ElyndraBot.')
+        .addFields(
+            { name: '🏠 Accueil', value: 'Vue d\'ensemble du serveur', inline: true },
+            { name: '🚫 Automod', value: 'Configuration anti-spam', inline: true },
+            { name: '🎭 Reaction Panels', value: 'Gestion des réaction-rôles', inline: true },
+            { name: '📋 Moderation', value: 'Paramètres de modération', inline: true },
+            { name: '🔔 Notifications', value: 'Salon de logs', inline: true },
+            { name: '🌐 Minecraft', value: 'Info serveur Minecraft', inline: true }
+        )
+        .setTimestamp());
+}
+
+function getConfigModuleSelectMenu() {
+    return new StringSelectMenuBuilder()
+        .setCustomId('config_module_select')
+        .setPlaceholder('Choisissez un module...')
+        .addOptions(
+            { label: 'Accueil', value: 'home', emoji: '🏠', description: 'Vue d\'ensemble', default: true },
+            { label: 'Automod', value: 'automod', emoji: '🚫', description: 'Configuration anti-spam' },
+            { label: 'Reaction Panels', value: 'reaction_panels', emoji: '🎭', description: 'Gestion des rôles' },
+            { label: 'Moderation', value: 'moderation', emoji: '📋', description: 'Paramètres de modération' },
+            { label: 'Notifications', value: 'notifications', emoji: '🔔', description: 'Salon de logs' },
+            { label: 'Minecraft', value: 'minecraft', emoji: '🌐', description: 'Info serveur Minecraft' }
+        );
+}
+
+function buildConfigModuleEmbed(moduleName, guild, guildConfig) {
+    const baseEmbed = new EmbedBuilder().setColor(PANEL_COLOR);
+    
+    if (moduleName === 'home') {
+        return baseEmbed
+            .setTitle('🏠 Accueil')
+            .setDescription(`Bienvenue sur **${guild.name}**`)
+            .addFields(
+                { name: '👥 Membres', value: `${guild.memberCount}`, inline: true },
+                { name: '📅 Créé le', value: `<t:${Math.floor(guild.createdTimestamp / 1000)}:D>`, inline: true },
+                { name: '💬 Salons texte', value: `${guild.channels.cache.filter(c => c.isTextBased()).size}`, inline: true },
+                { name: '🔊 Salons vocaux', value: `${guild.channels.cache.filter(c => c.isVoiceBased()).size}`, inline: true },
+                { name: '🧩 Rôles', value: `${guild.roles.cache.size}`, inline: true },
+                { name: '👤 Propriétaire', value: `<@${guild.ownerId}>`, inline: true }
+            )
+            .setThumbnail(guild.iconURL({ dynamic: true }))
+            .setTimestamp();
+    }
+    
+    if (moduleName === 'automod') {
+        const automod = guildConfig.automod;
+        return baseEmbed
+            .setTitle('🚫 Configuration Automod')
+            .addFields(
+                { name: '✅ Activé', value: automod.enabled ? 'Oui' : 'Non', inline: true },
+                { name: '🔗 Bloquer invitations', value: automod.blockInvites ? 'Oui' : 'Non', inline: true },
+                { name: '⚠️ Max mentions', value: `${automod.maxMentions}`, inline: true },
+                { name: '🔗 Max liens', value: `${automod.maxLinks}`, inline: true },
+                { name: '🔤 Max CAPS %', value: `${automod.maxCapsPercent}%`, inline: true },
+                { name: '📏 Min CAPS longueur', value: `${automod.minCapsLength}`, inline: true }
+            )
+            .setTimestamp();
+    }
+    
+    if (moduleName === 'reaction_panels') {
+        const panels = reactionPanels.panels[guild.id] || {};
+        const panelCount = Object.keys(panels).length;
+        return baseEmbed
+            .setTitle('🎭 Reaction Panels')
+            .setDescription(`**${panelCount}** panneau(x) configuré(s)`)
+            .addFields(
+                { name: 'Total', value: `${panelCount} panel(s)`, inline: true },
+                { name: 'Publiés', value: `${Object.values(panels).filter(p => p.messageId).length}`, inline: true },
+                { name: 'Brouillons', value: `${Object.values(panels).filter(p => !p.messageId).length}`, inline: true }
+            )
+            .setTimestamp();
+    }
+    
+    if (moduleName === 'moderation') {
+        return baseEmbed
+            .setTitle('📋 Moderation')
+            .setDescription('Paramètres de modération')
+            .addFields(
+                { name: 'Anti-spam activé', value: guildConfig.antispam.enabled ? 'Oui' : 'Non', inline: true },
+                { name: 'Max messages', value: `${guildConfig.antispam.maxMessages}`, inline: true },
+                { name: 'Intervalle', value: `${guildConfig.antispam.intervalMs}ms`, inline: true },
+                { name: 'Durée timeout', value: `${Math.floor(guildConfig.antispam.timeoutMs / 1000)}s`, inline: true }
+            )
+            .setTimestamp();
+    }
+    
+    if (moduleName === 'notifications') {
+        const logChannel = guildConfig.logChannelId ? `<#${guildConfig.logChannelId}>` : 'Non configuré';
+        return baseEmbed
+            .setTitle('🔔 Notifications')
+            .addFields(
+                { name: 'Salon de logs', value: logChannel, inline: false }
+            )
+            .setTimestamp();
+    }
+    
+    if (moduleName === 'minecraft') {
+        const mcConfig = getMinecraftConfig();
+        return baseEmbed
+            .setTitle('🌐 Minecraft')
+            .addFields(
+                { name: 'Serveur', value: mcConfig.host, inline: true },
+                { name: 'Port', value: `${mcConfig.port}`, inline: true }
+            )
+            .setTimestamp();
+    }
+    
+    return baseEmbed;
 }
 
 function applyCredit(embed) {
@@ -512,7 +706,41 @@ async function registerSlashCommands() {
                 .addStringOption(option => option.setName('valeur').setDescription('Nouvelle valeur').setRequired(true)))
             .addSubcommand(sub => sub
                 .setName('reset')
-                .setDescription('Reinitialiser la configuration'))
+                .setDescription('Reinitialiser la configuration')),
+        new SlashCommandBuilder()
+            .setName('configpanel')
+            .setDescription('Panneau de configuration interactif du serveur'),
+        new SlashCommandBuilder()
+            .setName('reactionpanel')
+            .setDescription('Gerer les panneaux de reaction de roles')
+            .addSubcommand(sub => sub
+                .setName('create')
+                .setDescription('Creer un nouveau panneau')
+                .addStringOption(option => option.setName('id').setDescription('ID du panneau (unique par serveur)').setRequired(true))
+                .addStringOption(option => option.setName('titre').setDescription('Titre du panneau').setRequired(true))
+                .addStringOption(option => option.setName('description').setDescription('Description du panneau').setRequired(true)))
+            .addSubcommand(sub => sub
+                .setName('delete')
+                .setDescription('Supprimer un panneau')
+                .addStringOption(option => option.setName('id').setDescription('ID du panneau').setRequired(true)))
+            .addSubcommand(sub => sub
+                .setName('addrole')
+                .setDescription('Ajouter une reaction-role au panneau')
+                .addStringOption(option => option.setName('id').setDescription('ID du panneau').setRequired(true))
+                .addStringOption(option => option.setName('emoji').setDescription('Emoji (ex: 🎮)').setRequired(true))
+                .addRoleOption(option => option.setName('role').setDescription('Role a attribuer').setRequired(true)))
+            .addSubcommand(sub => sub
+                .setName('removerole')
+                .setDescription('Retirer une reaction-role du panneau')
+                .addStringOption(option => option.setName('id').setDescription('ID du panneau').setRequired(true))
+                .addStringOption(option => option.setName('emoji').setDescription('Emoji').setRequired(true)))
+            .addSubcommand(sub => sub
+                .setName('publish')
+                .setDescription('Publier le panneau dans le salon courant')
+                .addStringOption(option => option.setName('id').setDescription('ID du panneau').setRequired(true)))
+            .addSubcommand(sub => sub
+                .setName('list')
+                .setDescription('Lister les panneaux'))
     ].map(command => command.toJSON());
 
     const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
@@ -552,6 +780,22 @@ client.on('interactionCreate', async (interaction) => {
             if (!guild) return;
             const embed = buildServerInfoEmbed(guild);
             await interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
+        }
+        return;
+    }
+
+    if (interaction.isStringSelectMenu()) {
+        if (interaction.customId === 'config_module_select') {
+            const guild = interaction.guild;
+            if (!guild) return;
+            
+            const selectedValue = interaction.values[0];
+            const config = getGuildConfig(guild.id);
+            const embed = buildConfigModuleEmbed(selectedValue, guild, config);
+            const selectMenu = getConfigModuleSelectMenu();
+            const row = new ActionRowBuilder().addComponents(selectMenu);
+            
+            await interaction.update({ embeds: [embed], components: [row] });
         }
         return;
     }
@@ -907,6 +1151,132 @@ client.on('interactionCreate', async (interaction) => {
                 return interaction.reply({ content: '✅ Configuration reinitialisee.', flags: MessageFlags.Ephemeral });
             }
         }
+
+        if (commandName === 'configpanel') {
+            if (!(await ensurePermissions(interaction, PermissionFlagsBits.ManageGuild, PermissionFlagsBits.ManageGuild))) return;
+            
+            const config = getGuildConfig(guild.id);
+            const mainEmbed = buildConfigPanelEmbed(guild);
+            const selectMenu = getConfigModuleSelectMenu();
+            const row = new ActionRowBuilder().addComponents(selectMenu);
+            
+            await interaction.reply({ embeds: [mainEmbed], components: [row], flags: MessageFlags.Ephemeral });
+            return;
+        }
+
+        if (commandName === 'reactionpanel') {
+            if (!(await ensurePermissions(interaction, PermissionFlagsBits.ManageRoles, PermissionFlagsBits.ManageRoles))) return;
+            const sub = interaction.options.getSubcommand();
+
+            if (sub === 'create') {
+                const panelId = interaction.options.getString('id', true).trim();
+                const titre = interaction.options.getString('titre', true);
+                const description = interaction.options.getString('description', true);
+
+                if (getReactionPanel(guild.id, panelId)) {
+                    return interaction.reply({ content: `❌ Un panneau avec l'ID '${panelId}' existe deja.`, flags: MessageFlags.Ephemeral });
+                }
+
+                createReactionPanel(guild.id, panelId, titre, description);
+                const embed = new EmbedBuilder()
+                    .setColor(PANEL_COLOR)
+                    .setTitle('✅ Panneau cree')
+                    .addFields(
+                        { name: 'ID', value: panelId },
+                        { name: 'Titre', value: titre },
+                        { name: 'Description', value: description }
+                    );
+                return interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
+            }
+
+            if (sub === 'delete') {
+                const panelId = interaction.options.getString('id', true).trim();
+                if (!deleteReactionPanel(guild.id, panelId)) {
+                    return interaction.reply({ content: `❌ Panneau '${panelId}' non trouve.`, flags: MessageFlags.Ephemeral });
+                }
+                return interaction.reply({ content: `✅ Panneau '${panelId}' supprime.`, flags: MessageFlags.Ephemeral });
+            }
+
+            if (sub === 'addrole') {
+                const panelId = interaction.options.getString('id', true).trim();
+                const emoji = interaction.options.getString('emoji', true).trim();
+                const role = interaction.options.getRole('role', true);
+
+                if (!getReactionPanel(guild.id, panelId)) {
+                    return interaction.reply({ content: `❌ Panneau '${panelId}' non trouve.`, flags: MessageFlags.Ephemeral });
+                }
+
+                if (!addReactionRole(guild.id, panelId, emoji, role.id)) {
+                    return interaction.reply({ content: `❌ Erreur lors de l'ajout du role au panneau.`, flags: MessageFlags.Ephemeral });
+                }
+
+                return interaction.reply({ content: `✅ Role ${role} ajoute avec l'emoji ${emoji}.`, flags: MessageFlags.Ephemeral });
+            }
+
+            if (sub === 'removerole') {
+                const panelId = interaction.options.getString('id', true).trim();
+                const emoji = interaction.options.getString('emoji', true).trim();
+
+                if (!removeReactionRole(guild.id, panelId, emoji)) {
+                    return interaction.reply({ content: `❌ Emoji non trouve pour ce panneau.`, flags: MessageFlags.Ephemeral });
+                }
+
+                return interaction.reply({ content: `✅ Emoji ${emoji} retire du panneau.`, flags: MessageFlags.Ephemeral });
+            }
+
+            if (sub === 'publish') {
+                const panelId = interaction.options.getString('id', true).trim();
+                const panel = getReactionPanel(guild.id, panelId);
+
+                if (!panel) {
+                    return interaction.reply({ content: `❌ Panneau '${panelId}' non trouve.`, flags: MessageFlags.Ephemeral });
+                }
+
+                const embed = new EmbedBuilder()
+                    .setColor(PANEL_COLOR)
+                    .setTitle(panel.title)
+                    .setDescription(panel.description);
+
+                if (Object.keys(panel.reactions).length > 0) {
+                    const reactionsText = Object.entries(panel.reactions)
+                        .map(([emoji, roleId]) => `${emoji} = <@&${roleId}>`)
+                        .join('\n');
+                    embed.addFields({ name: 'Reactions auto-roles', value: reactionsText });
+                }
+
+                const sentMessage = await interaction.channel.send({ embeds: [embed] });
+
+                // Add reactions to the message
+                for (const emoji of Object.keys(panel.reactions)) {
+                    await sentMessage.react(emoji).catch(() => {});
+                }
+
+                updatePanelMessage(guild.id, panelId, sentMessage.id, interaction.channel.id);
+
+                return interaction.reply({ content: `✅ Panneau publie! Les utilisateurs peuvent maintenant reagir.`, flags: MessageFlags.Ephemeral });
+            }
+
+            if (sub === 'list') {
+                const panels = reactionPanels.panels[guild.id] || {};
+                const panelCount = Object.keys(panels).length;
+
+                if (panelCount === 0) {
+                    return interaction.reply({ content: '❌ Aucun panneau pour ce serveur.', flags: MessageFlags.Ephemeral });
+                }
+
+                const embed = new EmbedBuilder()
+                    .setColor(PANEL_COLOR)
+                    .setTitle('📋 Panneaux de reaction-roles');
+
+                for (const [id, panel] of Object.entries(panels)) {
+                    const rolesCount = Object.keys(panel.reactions).length;
+                    const status = panel.messageId ? '✅ Publie' : '⏳ Brouillon';
+                    embed.addFields({ name: id, value: `${panel.title}\n${rolesCount} role(s)\n${status}`, inline: true });
+                }
+
+                return interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
+            }
+        }
     } catch (error) {
         console.error('Erreur commande:', error);
         if (!interaction.replied && !interaction.deferred) {
@@ -1006,6 +1376,61 @@ client.on('messageCreate', async (message) => {
                 .setTimestamp();
             await sendModLog(message.guild, embed);
         }
+    }
+});
+
+client.on('messageReactionAdd', async (reaction, user) => {
+    if (user.bot) return;
+    if (!reaction.message.guild) return;
+
+    try {
+        const panelInfo = getReactionPanelByMessage(reaction.message.guild.id, reaction.message.id);
+        if (!panelInfo) return;
+
+        const { panelId, panel } = panelInfo;
+        const emoji = reaction.emoji.toString();
+        const roleId = panel.reactions[emoji];
+
+        if (!roleId) {
+            await reaction.users.remove(user.id).catch(() => {});
+            return;
+        }
+
+        const role = reaction.message.guild.roles.cache.get(roleId);
+        if (!role) return;
+
+        const member = await reaction.message.guild.members.fetch(user.id).catch(() => null);
+        if (!member) return;
+
+        await member.roles.add(role).catch(() => {});
+    } catch (error) {
+        console.error('Erreur reaction add:', error);
+    }
+});
+
+client.on('messageReactionRemove', async (reaction, user) => {
+    if (user.bot) return;
+    if (!reaction.message.guild) return;
+
+    try {
+        const panelInfo = getReactionPanelByMessage(reaction.message.guild.id, reaction.message.id);
+        if (!panelInfo) return;
+
+        const { panelId, panel } = panelInfo;
+        const emoji = reaction.emoji.toString();
+        const roleId = panel.reactions[emoji];
+
+        if (!roleId) return;
+
+        const role = reaction.message.guild.roles.cache.get(roleId);
+        if (!role) return;
+
+        const member = await reaction.message.guild.members.fetch(user.id).catch(() => null);
+        if (!member) return;
+
+        await member.roles.remove(role).catch(() => {});
+    } catch (error) {
+        console.error('Erreur reaction remove:', error);
     }
 });
 

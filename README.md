@@ -2,6 +2,8 @@
 
 Bot Discord francais oriente moderation avec slash commands, automod et anti-spam.
 
+**Nouveaute:** 🎛️ **Panel de configuration intuitif** directement sur Discord (similaire a DraftBot)
+
 ## Fonctionnalites
 
 ### Slash commands
@@ -24,9 +26,24 @@ Bot Discord francais oriente moderation avec slash commands, automod et anti-spa
 - `/unwarn` - Retirer un avertissement par index
 - `/clearwarnings` - Effacer tous les avertissements
 
+### Panels de Réaction (Type DraftBot)
+- `/reactionpanel create` - Créer un nouveau panel
+- `/reactionpanel addrole` - Ajouter une réaction-rôle
+- `/reactionpanel removerole` - Retirer une réaction-rôle
+- `/reactionpanel publish` - Publier le panel dans le salon
+- `/reactionpanel delete` - Supprimer un panel
+- `/reactionpanel list` - Lister les panels
+
+Les membres réagissent avec les emojis pour obtenir/retirer automatiquement les rôles! 🎭
+
+📖 [Documentation complète des panels](REACTION_PANELS.md)
+
 ### Configuration et logs
 - `/modlog set|clear` - Definir le salon de logs
 - `/config view|set|reset` - Configurer automod et anti-spam
+- **`/configpanel`** - Panneau de configuration interactif 🎨
+
+📖 [Documentation du panel](CONFIG_PANEL.md)
 
 ### Automod et anti-spam
 - Blocage d'invitations Discord
