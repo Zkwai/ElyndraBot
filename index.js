@@ -1559,11 +1559,23 @@ client.on('shardError', error => {
     console.error('WebSocket connection error:', error);
 });
 
+client.on('shardDisconnect', (closeCode, shardId) => {
+    console.warn(`⚠️ Shard ${shardId} disconnected with code ${closeCode}`);
+});
+
+client.on('warn', message => {
+    console.warn('⚠️ Warning:', message);
+});
+
 console.log('🔄 Connexion à Discord...');
 if (!process.env.DISCORD_TOKEN) {
     console.error('❌ DISCORD_TOKEN manquant dans .env');
     process.exit(1);
 }
+
+const tokenLength = process.env.DISCORD_TOKEN.length;
+const tokenPreview = process.env.DISCORD_TOKEN.substring(0, 20) + '...';
+console.log(`📝 Token recevé (longueur: ${tokenLength}, aperçu: ${tokenPreview})`);
 
 console.log('📋 Configuration:');
 console.log(`   • Client ID: ${process.env.CLIENT_ID || 'non défini'}`);
@@ -1574,8 +1586,22 @@ console.log(`   • NODE_ENV: ${process.env.NODE_ENV || 'development'}`);
 // Timeout si le bot ne se connecte pas dans 30 secondes
 const loginTimeout = setTimeout(() => {
     if (!client.isReady()) {
-        console.error('⚠️ Timeout: Le bot n\'a pas pu se connecter à Discord après 30 secondes');
-        console.error('Vérifiez que votre token Discord est valide');
+        console.error('');
+        console.error('❌ ERREUR: Le bot n\'a pas pu se connecter à Discord après 30 secondes');
+        console.error('');
+        console.error('🔍 Causes possibles:');
+        console.error('   1. ❌ Variables d\'environnement manquantes sur Render');
+        console.error('   2. ❌ Token Discord invalide ou expiré');
+        console.error('   3. ❌ Privileged Gateway Intents non activés');
+        console.error('');
+        console.error('✅ Solutions:');
+        console.error('   1. Allez sur Dashboard Render > Environment > Ajouter:');
+        console.error('      - DISCORD_TOKEN=<votre_token>');
+        console.error('      - CLIENT_ID=1469054263647928452');
+        console.error('      - GUILD_ID=1250098388750438501,1459716898940784844');
+        console.error('   2. Régénérez le token dans Discord Developer Portal si expiré');
+        console.error('   3. Activez les Intents: Message Content, Server Members');
+        console.error('');
     }
 }, 30000);
 
