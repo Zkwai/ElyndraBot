@@ -1,0 +1,19 @@
+{
+  "clientId": "1469054263647928452",
+  "enabled": true,
+  "updateInterval": 15000,
+  "display": {
+    "state": "Jouant à Minecraft",
+    "details": "Sur Elyndra",
+    "largeImageKey": "capture_d_cran_2026-02-09_145009",
+    "largeImageText": "Numbani",
+    "smallImageKey": "1642663545213",
+    "smallImageText": "Rogue - Level 100",
+    "buttons": [
+      {
+        "label": "Rejoindre le serveur",
+        "url": "https://elyndra.mcbe.fr"
+      }
+    ]
+  }
+}

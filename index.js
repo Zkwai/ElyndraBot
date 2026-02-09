@@ -3,6 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const http = require('http');
 const { statusBedrock } = require('minecraft-server-util');
+const presenceManager = require('./richPresence');
 const {
     Client,
     GatewayIntentBits,
@@ -231,6 +232,61 @@ function parseGuildIds() {
         .split(',')
         .map(value => value.trim())
         .filter(Boolean);
+}
+
+let presenceIndex = 0;
+
+function updateBotPresence() {
+    if (!client.user) return;
+    
+    const serverCount = client.guilds.cache.size;
+    const memberCount = client.guilds.cache.reduce((acc, guild) => acc + guild.memberCount, 0);
+    
+    // Define multiple presence options that cycle
+    const presences = [
+        {
+            activities: [{
+                name: `/help pour les commandes`,
+                type: 3 // Watching
+            }],
+            status: 'online'
+        },
+        {
+            activities: [{
+                name: `${serverCount} serveur${serverCount > 1 ? 's' : ''}`,
+                type: 3 // Watching
+            }],
+            status: 'online'
+        },
+        {
+            activities: [{
+                name: `${memberCount} membre${memberCount > 1 ? 's' : ''}`,
+                type: 3 // Watching
+            }],
+            status: 'online'
+        },
+        {
+            activities: [{
+                name: `Moderation & Roles`,
+                type: 0 // Playing
+            }],
+            status: 'online'
+        },
+        {
+            activities: [{
+                name: `Minecraft: elyndra.mcbe.fr`,
+                type: 0 // Playing
+            }],
+            status: 'online'
+        }
+    ];
+    
+    // Cycle through presences
+    const presence = presences[presenceIndex % presences.length];
+    client.user.setPresence(presence);
+    
+    presenceIndex++;
+    console.log(`🎮 Presence mise à jour: ${presence.activities[0].name}`);
 }
 
 function normalizeGamertag(gamertag) {
@@ -750,7 +806,22 @@ async function registerSlashCommands() {
                 .addStringOption(option => option.setName('id').setDescription('ID du panneau').setRequired(true)))
             .addSubcommand(sub => sub
                 .setName('list')
-                .setDescription('Lister les panneaux'))
+                .setDescription('Lister les panneaux')),
+        new SlashCommandBuilder()
+            .setName('richpresence')
+            .setDescription('Gerer ta Rich Presence Discord')
+            .addSubcommand(sub => sub
+                .setName('enable')
+                .setDescription('Activer la Rich Presence (compte Minecraft doit etre lie)'))
+            .addSubcommand(sub => sub
+                .setName('disable')
+                .setDescription('Desactiver la Rich Presence'))
+            .addSubcommand(sub => sub
+                .setName('status')
+                .setDescription('Voir le statut de ta Rich Presence'))
+            .addSubcommand(sub => sub
+                .setName('stats')
+                .setDescription('Statistiques Rich Presence (admins uniquement)'))
     ].map(command => command.toJSON());
 
     const rest = new REST({ version: '10', timeout: 15000 }).setToken(process.env.DISCORD_TOKEN);
@@ -778,7 +849,11 @@ client.once('ready', async () => {
     console.log(`👥 Utilisateurs: ${client.guilds.cache.reduce((a, g) => a + g.memberCount, 0)}`);
     console.log(`🔑 Environment: NODE_ENV=${process.env.NODE_ENV || 'development'}`);
     console.log(`🌐 Port: ${port}`);
-    client.user.setActivity('/help pour les commandes', { type: 3 });
+    
+    // Initialize dynamic presence
+    updateBotPresence();
+    // Update presence every 30 seconds
+    setInterval(updateBotPresence, 30000);
 
     // Enregistrer les commandes en background (non-bloquant)
     console.log('📝 Enregistrement des slash commands...');
@@ -907,7 +982,21 @@ client.on('interactionCreate', async (interaction) => {
             if (!linked) {
                 return interaction.reply({ content: '❌ Gamertag invalide.', flags: MessageFlags.Ephemeral });
             }
-            return interaction.reply({ content: `✅ Compte lie a ${linked.gamertag}.`, flags: MessageFlags.Ephemeral });
+            
+            // Activer la Rich Presence pour le joueur
+            try {
+                const mcConfig = getMinecraftConfig();
+                await presenceManager.updateMinecraftPresence(interaction.user.id, {
+                    gamertag: linked.gamertag,
+                    world: 'Serveur Elyndra',
+                    level: 1
+                });
+                console.log(`🎮 Rich Presence activée pour ${interaction.user.tag} (${linked.gamertag})`);
+            } catch (error) {
+                console.error('⚠️ Erreur activation Rich Presence:', error.message);
+            }
+            
+            return interaction.reply({ content: `✅ Compte lie a ${linked.gamertag}.\n🎮 Rich Presence activée!`, flags: MessageFlags.Ephemeral });
         }
 
         if (commandName === 'unlink') {
@@ -915,7 +1004,16 @@ client.on('interactionCreate', async (interaction) => {
             if (!removed) {
                 return interaction.reply({ content: '❌ Aucune liaison trouvee.', flags: MessageFlags.Ephemeral });
             }
-            return interaction.reply({ content: '✅ Liaison supprimee.', flags: MessageFlags.Ephemeral });
+            
+            // Désactiver la Rich Presence
+            try {
+                await presenceManager.disconnectUser(interaction.user.id);
+                console.log(`🔌 Rich Presence désactivée pour ${interaction.user.tag}`);
+            } catch (error) {
+                console.error('⚠️ Erreur désactivation Rich Presence:', error.message);
+            }
+            
+            return interaction.reply({ content: '✅ Liaison supprimee.\n🔌 Rich Presence désactivée.', flags: MessageFlags.Ephemeral });
         }
 
         if (commandName === 'kick') {
@@ -1296,6 +1394,131 @@ client.on('interactionCreate', async (interaction) => {
                     const rolesCount = Object.keys(panel.reactions).length;
                     const status = panel.messageId ? '✅ Publie' : '⏳ Brouillon';
                     embed.addFields({ name: id, value: `${panel.title}\n${rolesCount} role(s)\n${status}`, inline: true });
+                }
+
+                return interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
+            }
+        }
+
+        if (commandName === 'richpresence') {
+            const sub = interaction.options.getSubcommand();
+
+            if (sub === 'enable') {
+                // Vérifier si le compte est lié
+                const linkedAccount = linksStore.byDiscordId[interaction.user.id];
+                if (!linkedAccount) {
+                    return interaction.reply({ 
+                        content: '❌ Tu dois d\'abord lier ton compte Minecraft avec `/link`', 
+                        flags: MessageFlags.Ephemeral 
+                    });
+                }
+
+                try {
+                    // Obtenir les infos du serveur Minecraft
+                    const mcConfig = getMinecraftConfig();
+                    let mcStatus = null;
+                    try {
+                        mcStatus = await fetchMinecraftStatus(mcConfig);
+                    } catch (err) {
+                        console.warn('⚠️ Impossible d\'obtenir le statut du serveur:', err.message);
+                    }
+
+                    await presenceManager.updateMinecraftPresence(interaction.user.id, {
+                        gamertag: linkedAccount.gamertag,
+                        world: 'Serveur Elyndra',
+                        level: 1,
+                        onlinePlayers: mcStatus?.onlinePlayers || 0,
+                        maxPlayers: mcStatus?.maxPlayers || 20
+                    });
+
+                    const embed = new EmbedBuilder()
+                        .setColor(PANEL_COLOR)
+                        .setTitle('🎮 Rich Presence activée')
+                        .setDescription('Ta Rich Presence Discord affiche maintenant ton statut Minecraft!')
+                        .addFields(
+                            { name: 'Gamertag', value: linkedAccount.gamertag, inline: true },
+                            { name: 'Statut', value: '✅ Actif', inline: true }
+                        )
+                        .setTimestamp();
+
+                    return interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
+
+                } catch (error) {
+                    console.error('❌ Erreur activation Rich Presence:', error);
+                    return interaction.reply({ 
+                        content: '❌ Erreur lors de l\'activation de la Rich Presence. Assure-toi que ton compte Discord est bien configuré.', 
+                        flags: MessageFlags.Ephemeral 
+                    });
+                }
+            }
+
+            if (sub === 'disable') {
+                try {
+                    await presenceManager.disconnectUser(interaction.user.id);
+                    
+                    const embed = new EmbedBuilder()
+                        .setColor(PANEL_COLOR)
+                        .setTitle('🔌 Rich Presence désactivée')
+                        .setDescription('Ta Rich Presence a été désactivée avec succès.')
+                        .setTimestamp();
+
+                    return interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
+
+                } catch (error) {
+                    console.error('❌ Erreur désactivation Rich Presence:', error);
+                    return interaction.reply({ 
+                        content: '❌ Erreur lors de la désactivation.', 
+                        flags: MessageFlags.Ephemeral 
+                    });
+                }
+            }
+
+            if (sub === 'status') {
+                const linkedAccount = linksStore.byDiscordId[interaction.user.id];
+                const isActive = presenceManager.clients.has(interaction.user.id);
+                const playerData = presenceManager.playerData.get(interaction.user.id);
+
+                const embed = new EmbedBuilder()
+                    .setColor(PANEL_COLOR)
+                    .setTitle('🎮 Statut Rich Presence')
+                    .addFields(
+                        { name: 'Compte lié', value: linkedAccount ? `✅ ${linkedAccount.gamertag}` : '❌ Non lié', inline: true },
+                        { name: 'Rich Presence', value: isActive ? '✅ Active' : '❌ Inactive', inline: true }
+                    );
+
+                if (isActive && playerData) {
+                    embed.addFields(
+                        { name: 'État actuel', value: playerData.state || 'N/A', inline: false },
+                        { name: 'Détails', value: playerData.details || 'N/A', inline: false }
+                    );
+                }
+
+                embed.setTimestamp();
+                return interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
+            }
+
+            if (sub === 'stats') {
+                // Vérifier les permissions d'admin
+                if (!interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
+                    return interaction.reply({ 
+                        content: '❌ Cette commande est réservée aux administrateurs.', 
+                        flags: MessageFlags.Ephemeral 
+                    });
+                }
+
+                const stats = presenceManager.getStats();
+                const embed = new EmbedBuilder()
+                    .setColor(PANEL_COLOR)
+                    .setTitle('📊 Statistiques Rich Presence')
+                    .addFields(
+                        { name: 'Connexions actives', value: `${stats.activeConnections}`, inline: true },
+                        { name: 'Config', value: presenceManager.config.enabled ? '✅ Activée' : '❌ Désactivée', inline: true }
+                    )
+                    .setTimestamp();
+
+                if (stats.connectedUsers.length > 0) {
+                    const users = stats.connectedUsers.slice(0, 10).map(id => `<@${id}>`).join(', ');
+                    embed.addFields({ name: 'Utilisateurs connectés', value: users, inline: false });
                 }
 
                 return interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });

@@ -16,6 +16,7 @@
   "author": "ZK",
   "license": "MIT",
   "dependencies": {
+    "discord-rpc": "^4.0.1",
     "discord.js": "^14.14.1",
     "dotenv": "^16.3.1",
     "minecraft-server-util": "^5.4.4"
