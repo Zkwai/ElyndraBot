@@ -761,7 +761,7 @@ async function registerSlashCommands() {
     console.log('✅ Slash commands synchronisees globalement.');
 }
 
-client.once('clientReady', async () => {
+client.once('ready', async () => {
     console.log(`✅ Bot connecté en tant que ${client.user.tag}`);
     console.log(`📊 Serveurs: ${client.guilds.cache.size}`);
     console.log(`👥 Utilisateurs: ${client.guilds.cache.reduce((a, g) => a + g.memberCount, 0)}`);
