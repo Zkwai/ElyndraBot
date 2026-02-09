@@ -753,10 +753,11 @@ async function registerSlashCommands() {
                 .setDescription('Lister les panneaux'))
     ].map(command => command.toJSON());
 
-    const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
+    const rest = new REST({ version: '10', timeout: 15000 }).setToken(process.env.DISCORD_TOKEN);
     const guildIds = parseGuildIds();
     if (guildIds.length > 0) {
         for (const guildId of guildIds) {
+            console.log(`📤 Enregistrement des commandes pour le serveur ${guildId}...`);
             await rest.put(
                 Routes.applicationGuildCommands(process.env.CLIENT_ID, guildId),
                 { body: commands }
@@ -766,6 +767,7 @@ async function registerSlashCommands() {
         return;
     }
 
+    console.log('📤 Enregistrement global des commandes...');
     await rest.put(Routes.applicationCommands(process.env.CLIENT_ID), { body: commands });
     console.log('✅ Slash commands synchronisees globalement.');
 }
@@ -778,11 +780,16 @@ client.once('ready', async () => {
     console.log(`🌐 Port: ${port}`);
     client.user.setActivity('/help pour les commandes', { type: 3 });
 
-    try {
-        await registerSlashCommands();
-    } catch (error) {
-        console.error('Erreur synchronisation commandes:', error);
-    }
+    // Enregistrer les commandes en background (non-bloquant)
+    console.log('📝 Enregistrement des slash commands...');
+    registerSlashCommands()
+        .then(() => {
+            console.log('✅ Toutes les commandes ont été enregistrées');
+        })
+        .catch(error => {
+            console.error('❌ Erreur synchronisation commandes:', error.message || error);
+            console.error('⚠️ Le bot fonctionnera quand même, mais les commandes peuvent ne pas être à jour');
+        });
 });
 
 client.on('interactionCreate', async (interaction) => {
