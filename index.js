@@ -38,6 +38,7 @@ const CREDIT_TEXT = 'aimbot.sprx';
 const CREDIT_ICON_URL = 'https://cdn.discordapp.com/avatars/396332601717293056/05cc4947c620300904d645739e53f8d7.png?size=1024';
 const LINK_CODE_TTL_MS = 10 * 60 * 1000;
 const LINK_SECRET = process.env.LINK_SECRET || '';
+const CONFIG_PANEL_ROLE_ID = '1266193611813290045'; // Rôle requis pour accéder au panel de configuration
 const defaultMinecraftConfig = {
     title: 'Informations Minecraft',
     host: 'elyndra.mcbe.fr',
@@ -1154,6 +1155,11 @@ client.on('interactionCreate', async (interaction) => {
 
         if (commandName === 'configpanel') {
             if (!(await ensurePermissions(interaction, PermissionFlagsBits.ManageGuild, PermissionFlagsBits.ManageGuild))) return;
+            
+            // Vérifier que l'utilisateur a le rôle requis
+            if (!interaction.member.roles.cache.has(CONFIG_PANEL_ROLE_ID)) {
+                return interaction.reply({ content: '❌ Tu n\'as pas le rôle requis pour accéder au panel de configuration.', flags: MessageFlags.Ephemeral });
+            }
             
             const config = getGuildConfig(guild.id);
             const mainEmbed = buildConfigPanelEmbed(guild);
