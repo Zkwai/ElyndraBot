@@ -1575,6 +1575,28 @@ client.on('warn', message => {
     console.warn('⚠️ Warning:', message);
 });
 
+// Capture les messages de debug discord.js (très verbeux)
+client.on('debug', message => {
+    if (message.includes('invalid') || message.includes('token') || message.includes('auth')) {
+        console.debug('🐛 DEBUG:', message);
+    }
+});
+
+// Si le token est invalide
+client.once('invalidated', () => {
+    console.error('❌ Token invalidé! Le bot doit être redémarré.');
+    process.exit(1);
+});
+
+// Reconnexion
+client.on('shardResume', shardId => {
+    console.log(`✅ Shard ${shardId} reconnecté`);
+});
+
+client.on('shardDisconnect', (closeCode, shardId) => {
+    console.warn(`⚠️ Shard ${shardId} disconnected with code ${closeCode}`);
+});
+
 console.log('🔄 Connexion à Discord...');
 if (!process.env.DISCORD_TOKEN) {
     console.error('❌ DISCORD_TOKEN manquant dans .env');
@@ -1591,16 +1613,17 @@ console.log(`   • Guild IDs: ${process.env.GUILD_ID || 'non défini'}`);
 console.log(`   • PORT: ${port}`);
 console.log(`   • NODE_ENV: ${process.env.NODE_ENV || 'development'}`);
 
-// Timeout si le bot ne se connecte pas dans 30 secondes
+// Timeout si le bot ne se connecte pas dans 10 secondes
 const loginTimeout = setTimeout(() => {
     if (!client.isReady()) {
         console.error('');
-        console.error('❌ ERREUR: Le bot n\'a pas pu se connecter à Discord après 30 secondes');
+        console.error('❌ ERREUR: Le bot n\'a pas pu se connecter à Discord après 10 secondes');
         console.error('');
         console.error('🔍 Causes possibles:');
         console.error('   1. ❌ Variables d\'environnement manquantes sur Render');
         console.error('   2. ❌ Token Discord invalide ou expiré');
         console.error('   3. ❌ Privileged Gateway Intents non activés');
+        console.error('   4. ❌ Problème de connectivité réseau');
         console.error('');
         console.error('✅ Solutions:');
         console.error('   1. Allez sur Dashboard Render > Environment > Ajouter:');
@@ -1609,9 +1632,16 @@ const loginTimeout = setTimeout(() => {
         console.error('      - GUILD_ID=1250098388750438501,1459716898940784844');
         console.error('   2. Régénérez le token dans Discord Developer Portal si expiré');
         console.error('   3. Activez les Intents: Message Content, Server Members');
+        console.error('   4. Vérifiez votre connexion réseau');
         console.error('');
+        console.error('⏹️ Arrêt du bot pour permettre à Render de redémarrer...');
+        process.exit(1);
     }
-}, 30000);
+}, 10000);
+
+console.log('🚀 Tentative de connexion au serveur Discord...');
+console.log(`   En cours avec token (${tokenLength} caractères)`);
+console.log(`   Client ID: ${process.env.CLIENT_ID}`);
 
 client.login(process.env.DISCORD_TOKEN)
     .then(() => {
@@ -1620,6 +1650,11 @@ client.login(process.env.DISCORD_TOKEN)
     })
     .catch(error => {
         console.error('❌ Erreur de login:', error.message || error);
+        if (error.code === 'ERR_INVALID_TOKEN') {
+            console.error('💥 Token invalide! Vérifiez qu\'il est correct.');
+        } else if (error.code === 'INVALID_TOKEN') {
+            console.error('💥 Token invalide (Discord error)!');
+        }
         clearTimeout(loginTimeout);
         process.exit(1);
     });
