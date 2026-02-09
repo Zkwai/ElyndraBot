@@ -1560,7 +1560,38 @@ client.on('shardError', error => {
 });
 
 console.log('🔄 Connexion à Discord...');
-client.login(process.env.DISCORD_TOKEN).catch(error => {
-    console.error('Failed to login:', error);
+if (!process.env.DISCORD_TOKEN) {
+    console.error('❌ DISCORD_TOKEN manquant dans .env');
     process.exit(1);
-});
+}
+
+console.log('📋 Configuration:');
+console.log(`   • Client ID: ${process.env.CLIENT_ID || 'non défini'}`);
+console.log(`   • Guild IDs: ${process.env.GUILD_ID || 'non défini'}`);
+console.log(`   • PORT: ${port}`);
+console.log(`   • NODE_ENV: ${process.env.NODE_ENV || 'development'}`);
+
+// Timeout si le bot ne se connecte pas dans 30 secondes
+const loginTimeout = setTimeout(() => {
+    if (!client.isReady()) {
+        console.error('⚠️ Timeout: Le bot n\'a pas pu se connecter à Discord après 30 secondes');
+        console.error('Vérifiez que votre token Discord est valide');
+    }
+}, 30000);
+
+client.login(process.env.DISCORD_TOKEN)
+    .then(() => {
+        console.log('✅ Login effectué avec succès');
+        clearTimeout(loginTimeout);
+    })
+    .catch(error => {
+        console.error('❌ Erreur de login:', error.message || error);
+        clearTimeout(loginTimeout);
+        process.exit(1);
+    });
+
+// Heartbeat pour confirmer que le processus est vivant
+setInterval(() => {
+    const status = client.isReady() ? '✅ Connecté' : '⏳ En connexion...';
+    console.log(`💓 Heartbeat: ${status} | ${new Date().toISOString()}`);
+}, 30000);
