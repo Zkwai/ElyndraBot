@@ -1,7 +1,7 @@
 {
   "clientId": "1469054263647928452",
   "enabled": true,
-  "updateInterval": 15000,
+  "updateInterval": 10000,
   "display": {
     "state": "Jouant à Minecraft",
     "details": "Sur Elyndra",
