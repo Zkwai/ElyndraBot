@@ -1641,8 +1641,8 @@ const loginTimeout = setTimeout(() => {
         console.error('   3. Activez les Intents: Message Content, Server Members');
         console.error('   4. Vérifiez votre connexion réseau');
         console.error('');
-        console.error('⏹️ Arrêt du bot pour permettre à Render de redémarrer...');
-        process.exit(1);
+        console.error('⚠️ Le serveur HTTP reste actif pour le health check Render');
+        console.error('⚠️ Le bot tentera de se reconnecter automatiquement');
     }
 }, 10000);
 
@@ -1658,12 +1658,14 @@ client.login(process.env.DISCORD_TOKEN)
     .catch(error => {
         console.error('❌ Erreur de login:', error.message || error);
         if (error.code === 'ERR_INVALID_TOKEN') {
-            console.error('💥 Token invalide! Vérifiez qu\'il est correct.');
+            console.error('💥 Token invalide! Vérifiez qu\'il est correct dans les variables d\'environnement Render.');
         } else if (error.code === 'INVALID_TOKEN') {
-            console.error('💥 Token invalide (Discord error)!');
+            console.error('💥 Token invalide (Discord error)! Régénérez le token.');
         }
+        console.error('⚠️ Le serveur HTTP reste actif, mais le bot Discord n\'est pas connecté.');
+        console.error('⚠️ Corrigez le token et redéployez sur Render.');
         clearTimeout(loginTimeout);
-        process.exit(1);
+        // NE PAS exit pour que Render considère le service comme actif
     });
 
 // Heartbeat pour confirmer que le processus est vivant
