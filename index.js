@@ -59,7 +59,8 @@ const client = new Client({
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.MessageContent,
         GatewayIntentBits.GuildMembers,
-        GatewayIntentBits.GuildModeration
+        GatewayIntentBits.GuildModeration,
+        GatewayIntentBits.GuildMessageReactions
     ],
     partials: [Partials.Message, Partials.Channel, Partials.Reaction]
 });
@@ -761,10 +762,12 @@ async function registerSlashCommands() {
     console.log('✅ Slash commands synchronisees globalement.');
 }
 
-client.once('ready', async () => {
+client.once('clientReady', async () => {
     console.log(`✅ Bot connecté en tant que ${client.user.tag}`);
     console.log(`📊 Serveurs: ${client.guilds.cache.size}`);
     console.log(`👥 Utilisateurs: ${client.guilds.cache.reduce((a, g) => a + g.memberCount, 0)}`);
+    console.log(`🔑 Environment: NODE_ENV=${process.env.NODE_ENV || 'development'}`);
+    console.log(`🌐 Port: ${port}`);
     client.user.setActivity('/help pour les commandes', { type: 3 });
 
     try {
@@ -1536,7 +1539,7 @@ http
         res.writeHead(404, { 'Content-Type': 'text/plain' });
         res.end('Not Found');
     })
-    .listen(port, () => {
+    .listen(port, '0.0.0.0', () => {
         console.log(`🌐 HTTP server listening on ${port}`);
     });
 
@@ -1544,4 +1547,20 @@ process.on('unhandledRejection', error => {
     console.error('Unhandled promise rejection:', error);
 });
 
-client.login(process.env.DISCORD_TOKEN);
+process.on('uncaughtException', error => {
+    console.error('Uncaught exception:', error);
+});
+
+client.on('error', error => {
+    console.error('Discord client error:', error);
+});
+
+client.on('shardError', error => {
+    console.error('WebSocket connection error:', error);
+});
+
+console.log('🔄 Connexion à Discord...');
+client.login(process.env.DISCORD_TOKEN).catch(error => {
+    console.error('Failed to login:', error);
+    process.exit(1);
+});
