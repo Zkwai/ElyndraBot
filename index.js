@@ -113,7 +113,7 @@ const defaultGuildConfig = {
     automod: {
         enabled: true,
         blockInvites: true,
-        linkAllowedChannelIds: ['1399936776683913378'],
+        linkAllowedChannelIds: [],
         allowInvitesInLinkChannels: false,
         maxMentions: 5,
         maxLinks: 3,
@@ -149,12 +149,14 @@ function getGuildConfig(guildId) {
         writeJson(CONFIG_PATH, guildConfigs);
     }
     const config = guildConfigs[guildId];
+    const envAutomodOverrides = getEnvAutomodOverrides();
     const merged = {
         ...defaultGuildConfig,
         ...config,
         automod: {
             ...defaultGuildConfig.automod,
-            ...(config.automod || {})
+            ...(config.automod || {}),
+            ...envAutomodOverrides
         },
         antispam: {
             ...defaultGuildConfig.antispam,
@@ -232,6 +234,40 @@ function parseGuildIds() {
         .split(',')
         .map(value => value.trim())
         .filter(Boolean);
+}
+
+function parseIdList(value) {
+    const raw = String(value || '').trim();
+    if (!raw) return null;
+    return raw
+        .split(',')
+        .map(entry => entry.trim())
+        .filter(Boolean);
+}
+
+function getEnvAutomodOverrides() {
+    const overrides = {};
+    if (Object.prototype.hasOwnProperty.call(process.env, 'AUTOMOD_ENABLED')) {
+        const parsed = parseBoolean(process.env.AUTOMOD_ENABLED);
+        if (parsed !== null) overrides.enabled = parsed;
+    }
+    if (Object.prototype.hasOwnProperty.call(process.env, 'AUTOMOD_BLOCK_INVITES')) {
+        const parsed = parseBoolean(process.env.AUTOMOD_BLOCK_INVITES);
+        if (parsed !== null) overrides.blockInvites = parsed;
+    }
+    if (Object.prototype.hasOwnProperty.call(process.env, 'AUTOMOD_ALLOW_INVITES_IN_LINK_CHANNELS')) {
+        const parsed = parseBoolean(process.env.AUTOMOD_ALLOW_INVITES_IN_LINK_CHANNELS);
+        if (parsed !== null) overrides.allowInvitesInLinkChannels = parsed;
+    }
+    if (Object.prototype.hasOwnProperty.call(process.env, 'AUTOMOD_LINK_ALLOWED_CHANNEL_IDS')) {
+        const ids = parseIdList(process.env.AUTOMOD_LINK_ALLOWED_CHANNEL_IDS);
+        if (ids) overrides.linkAllowedChannelIds = ids;
+    }
+    if (Object.prototype.hasOwnProperty.call(process.env, 'AUTOMOD_MAX_LINKS')) {
+        const parsed = parseInt(process.env.AUTOMOD_MAX_LINKS, 10);
+        if (!Number.isNaN(parsed)) overrides.maxLinks = parsed;
+    }
+    return overrides;
 }
 
 let presenceIndex = 0;
