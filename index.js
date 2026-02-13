@@ -1257,6 +1257,7 @@ client.on('interactionCreate', async (interaction) => {
             const config = getGuildConfig(guild.id);
             const sub = interaction.options.getSubcommand();
             if (sub === 'view') {
+                await interaction.deferReply({ flags: MessageFlags.Ephemeral });
                 const embed = new EmbedBuilder()
                     .setColor(PANEL_COLOR)
                     .setTitle('⚙️ Configuration de modération')
@@ -1266,7 +1267,7 @@ client.on('interactionCreate', async (interaction) => {
                         { name: 'Logs', value: config.logChannelId ? `<#${config.logChannelId}>` : 'Non defini', inline: false }
                     )
                     .setTimestamp();
-                return interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
+                return interaction.editReply({ embeds: [embed] });
             }
             if (sub === 'set') {
                 const key = interaction.options.getString('cle', true);
