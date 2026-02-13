@@ -113,7 +113,7 @@ const defaultGuildConfig = {
     automod: {
         enabled: true,
         blockInvites: true,
-        linkAllowedChannelIds: [],
+        linkAllowedChannelIds: ['1399936776683913378'],
         allowInvitesInLinkChannels: false,
         maxMentions: 5,
         maxLinks: 3,
