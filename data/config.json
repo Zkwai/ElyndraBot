@@ -4,8 +4,10 @@
     "automod": {
       "enabled": true,
       "blockInvites": true,
-      "linkAllowedChannelIds": [1399936776683913378],
-      "allowInvitesInLinkChannels": false,
+      "linkAllowedChannelIds": [
+        "1399936776683913378"
+      ],
+      "allowInvitesInLinkChannels": true,
       "maxMentions": 5,
       "maxLinks": 3,
       "maxCapsPercent": 70,
@@ -23,9 +25,7 @@
     "automod": {
       "enabled": true,
       "blockInvites": true,
-      "linkAllowedChannelIds": [
-        "1399936776683913378"
-      ],
+      "linkAllowedChannelIds": [],
       "allowInvitesInLinkChannels": false,
       "maxMentions": 5,
       "maxLinks": 3,
