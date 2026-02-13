@@ -1,0 +1,42 @@
+{
+  "1250098388750438501": {
+    "logChannelId": null,
+    "automod": {
+      "enabled": true,
+      "blockInvites": true,
+      "linkAllowedChannelIds": [1399936776683913378],
+      "allowInvitesInLinkChannels": false,
+      "maxMentions": 5,
+      "maxLinks": 3,
+      "maxCapsPercent": 70,
+      "minCapsLength": 10
+    },
+    "antispam": {
+      "enabled": true,
+      "intervalMs": 7000,
+      "maxMessages": 5,
+      "timeoutMs": 600000
+    }
+  },
+  "1459716898940784844": {
+    "logChannelId": null,
+    "automod": {
+      "enabled": true,
+      "blockInvites": true,
+      "linkAllowedChannelIds": [
+        "1399936776683913378"
+      ],
+      "allowInvitesInLinkChannels": false,
+      "maxMentions": 5,
+      "maxLinks": 3,
+      "maxCapsPercent": 70,
+      "minCapsLength": 10
+    },
+    "antispam": {
+      "enabled": true,
+      "intervalMs": 7000,
+      "maxMessages": 5,
+      "timeoutMs": 600000
+    }
+  }
+}
